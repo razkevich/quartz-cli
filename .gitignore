@@ -1,0 +1,79 @@
+# IDE
+.idea/
+.vscode/
+
+# Build
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Maven
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+
+# Logs
+*.log
+logs/
+spring-shell.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Package Files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# IDE specific files
+*.iml
+*.iws
+*.ipr
+.settings/
+.classpath
+.project
+.factorypath
+*.launch
+*.sublime-workspace
+*.sublime-project
+
+# OS specific files
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# System Files
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+*.temp
+
+# Test files
+test-output/
+test-results/
+test-reports/ 
