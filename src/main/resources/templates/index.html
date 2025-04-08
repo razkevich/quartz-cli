@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quartz Web Console</title>
+    <!-- Vue.js -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
+    <!-- Axios for HTTP requests -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        .sidebar {
+            min-height: calc(100vh - 56px);
+            background-color: #f8f9fa;
+            border-right: 1px solid #dee2e6;
+        }
+        .nav-link {
+            color: #495057;
+        }
+        .nav-link.active {
+            color: #0d6efd;
+            font-weight: bold;
+        }
+        .nav-link:hover {
+            background-color: #e9ecef;
+        }
+        .table-container {
+            overflow-x: auto;
+        }
+        .cursor-pointer {
+            cursor: pointer;
+        }
+        .badge-pill {
+            border-radius: 10rem;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Loading overlay -->
+        <div class="loading-overlay" v-if="loading">
+            <div class="spinner-border text-light" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+
+        <!-- Navbar -->
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="#">
+                    <i class="bi bi-clock"></i> Quartz Web Console
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" @click="refreshData">
+                                <i class="bi bi-arrow-clockwise"></i> Refresh
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#connectionInfoModal">
+                                <i class="bi bi-info-circle"></i> Connection Info
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container-fluid">
+            <div class="row">
+                <!-- Sidebar -->
+                <div class="col-md-2 sidebar py-3">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" :class="{ active: activeView === 'jobs' }" href="#" @click="setActiveView('jobs')">
+                                <i class="bi bi-briefcase"></i> Jobs
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" :class="{ active: activeView === 'triggers' }" href="#" @click="setActiveView('triggers')">
+                                <i class="bi bi-lightning"></i> Triggers
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" :class="{ active: activeView === 'running' }" href="#" @click="setActiveView('running')">
+                                <i class="bi bi-play-circle"></i> Running Jobs
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" :class="{ active: activeView === 'paused' }" href="#" @click="setActiveView('paused')">
+                                <i class="bi bi-pause-circle"></i> Paused Groups
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" :class="{ active: activeView === 'schedulers' }" href="#" @click="setActiveView('schedulers')">
+                                <i class="bi bi-calendar-check"></i> Schedulers
+                            </a>
+                        </li>
+                        <li class="nav-item mt-3">
+                            <a class="nav-link text-danger" href="#" data-bs-toggle="modal" data-bs-target="#clearTablesModal">
+                                <i class="bi bi-trash"></i> Clear Tables
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Main content -->
+                <div class="col-md-10 py-3">
+                    <!-- Jobs View -->
+                    <div v-if="activeView === 'jobs'">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h2>Jobs</h2>
+                            <div class="d-flex">
+                                <input type="text" class="form-control me-2" v-model="jobsFilter" placeholder="Filter by name or group...">
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Group</th>
+                                        <th>Name</th>
+                                        <th>Class</th>
+                                        <th>Description</th>
+                                        <th>Triggers</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="job in filteredJobs" :key="job.group + '-' + job.name">
+                                        <td>{{ job.group }}</td>
+                                        <td>{{ job.name }}</td>
+                                        <td>{{ job.class }}</td>
+                                        <td>{{ job.description || 'N/A' }}</td>
+                                        <td>
+                                            <span class="badge bg-primary">{{ job.triggerCount }}</span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-info me-1" @click="viewJobDetails(job)">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-danger" @click="confirmDeleteJob(job)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="filteredJobs.length === 0">
+                                        <td colspan="6" class="text-center">No jobs found</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Triggers View -->
+                    <div v-if="activeView === 'triggers'">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h2>Triggers</h2>
+                            <div class="d-flex">
+                                <input type="text" class="form-control me-2" v-model="triggersFilter" placeholder="Filter by name or group...">
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Group</th>
+                                        <th>Name</th>
+                                        <th>Job</th>
+                                        <th>Type</th>
+                                        <th>State</th>
+                                        <th>Next Fire Time</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="trigger in filteredTriggers" :key="trigger.group + '-' + trigger.name">
+                                        <td>{{ trigger.group }}</td>
+                                        <td>{{ trigger.name }}</td>
+                                        <td>{{ trigger.jobGroup }}.{{ trigger.jobName }}</td>
+                                        <td>
+                                            <span class="badge" :class="getTriggerTypeClass(trigger.type)">{{ trigger.type }}</span>
+                                        </td>
+                                        <td>
+                                            <span class="badge" :class="getTriggerStateClass(trigger.state)">{{ trigger.state }}</span>
+                                        </td>
+                                        <td>{{ trigger.nextFireTime }}</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-info me-1" @click="viewTriggerDetails(trigger)">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-danger" @click="confirmDeleteTrigger(trigger)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="filteredTriggers.length === 0">
+                                        <td colspan="7" class="text-center">No triggers found</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Running Jobs View -->
+                    <div v-if="activeView === 'running'">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h2>Running Jobs</h2>
+                        </div>
+                        <div class="table-container">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Job</th>
+                                        <th>Trigger</th>
+                                        <th>Instance</th>
+                                        <th>Fired Time</th>
+                                        <th>Scheduled Time</th>
+                                        <th>State</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="job in runningJobs" :key="job.entryId">
+                                        <td>{{ job.jobGroup }}.{{ job.jobName }}</td>
+                                        <td>{{ job.triggerGroup }}.{{ job.triggerName }}</td>
+                                        <td>{{ job.instanceName }}</td>
+                                        <td>{{ job.firedTime }}</td>
+                                        <td>{{ job.scheduledTime }}</td>
+                                        <td>
+                                            <span class="badge bg-success">{{ job.state }}</span>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="runningJobs.length === 0">
+                                        <td colspan="6" class="text-center">No running jobs found</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Paused Groups View -->
+                    <div v-if="activeView === 'paused'">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h2>Paused Trigger Groups</h2>
+                        </div>
+                        <div class="table-container">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Scheduler</th>
+                                        <th>Trigger Group</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="group in pausedGroups" :key="group.schedulerName + '-' + group.triggerGroup">
+                                        <td>{{ group.schedulerName }}</td>
+                                        <td>{{ group.triggerGroup }}</td>
+                                    </tr>
+                                    <tr v-if="pausedGroups.length === 0">
+                                        <td colspan="2" class="text-center">No paused trigger groups found</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Schedulers View -->
+                    <div v-if="activeView === 'schedulers'">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h2>Schedulers</h2>
+                        </div>
+                        <div class="table-container">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Scheduler Name</th>
+                                        <th>Instance Name</th>
+                                        <th>Last Checkin Time</th>
+                                        <th>Checkin Interval</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="scheduler in schedulers" :key="scheduler.schedulerName + '-' + scheduler.instanceName">
+                                        <td>{{ scheduler.schedulerName }}</td>
+                                        <td>{{ scheduler.instanceName }}</td>
+                                        <td>{{ scheduler.lastCheckinTime }}</td>
+                                        <td>{{ scheduler.checkinInterval }} ms</td>
+                                    </tr>
+                                    <tr v-if="schedulers.length === 0">
+                                        <td colspan="4" class="text-center">No schedulers found</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Job Details Modal -->
+        <div class="modal fade" id="jobDetailsModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Job Details</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" v-if="selectedJobDetails">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6>Basic Information</h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <th>Name:</th>
+                                        <td>{{ selectedJobDetails.name }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Group:</th>
+                                        <td>{{ selectedJobDetails.group }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Description:</th>
+                                        <td>{{ selectedJobDetails.description || 'N/A' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Job Class:</th>
+                                        <td>{{ selectedJobDetails.jobClass }}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Job Properties</h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <th>Durable:</th>
+                                        <td>{{ selectedJobDetails.isDurable === 'true' ? 'Yes' : 'No' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Non-Concurrent:</th>
+                                        <td>{{ selectedJobDetails.isNonConcurrent === 'true' ? 'Yes' : 'No' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Update Data:</th>
+                                        <td>{{ selectedJobDetails.isUpdateData === 'true' ? 'Yes' : 'No' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Requests Recovery:</th>
+                                        <td>{{ selectedJobDetails.requestsRecovery === 'true' ? 'Yes' : 'No' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Has Job Data:</th>
+                                        <td>{{ selectedJobDetails.hasJobData ? 'Yes' : 'No' }}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+
+                        <h6>Associated Triggers</h6>
+                        <div class="table-container">
+                            <table class="table table-sm table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Group</th>
+                                        <th>Type</th>
+                                        <th>State</th>
+                                        <th>Next Fire Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="trigger in selectedJobDetails.triggers" :key="trigger.group + '-' + trigger.name">
+                                        <td>{{ trigger.name }}</td>
+                                        <td>{{ trigger.group }}</td>
+                                        <td>
+                                            <span class="badge" :class="getTriggerTypeClass(trigger.type)">{{ trigger.type }}</span>
+                                        </td>
+                                        <td>
+                                            <span class="badge" :class="getTriggerStateClass(trigger.state)">{{ trigger.state }}</span>
+                                        </td>
+                                        <td>{{ trigger.nextFireTime }}</td>
+                                    </tr>
+                                    <tr v-if="selectedJobDetails.triggers.length === 0">
+                                        <td colspan="5" class="text-center">No triggers associated with this job</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trigger Details Modal -->
+        <div class="modal fade" id="triggerDetailsModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Trigger Details</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" v-if="selectedTriggerDetails">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6>Basic Information</h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <th>Name:</th>
+                                        <td>{{ selectedTriggerDetails.name }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Group:</th>
+                                        <td>{{ selectedTriggerDetails.group }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Job Name:</th>
+                                        <td>{{ selectedTriggerDetails.jobName }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Job Group:</th>
+                                        <td>{{ selectedTriggerDetails.jobGroup }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Description:</th>
+                                        <td>{{ selectedTriggerDetails.description || 'N/A' }}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Trigger Properties</h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <th>Type:</th>
+                                        <td>
+                                            <span class="badge" :class="getTriggerTypeClass(selectedTriggerDetails.type)">
+                                                {{ selectedTriggerDetails.type }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>State:</th>
+                                        <td>
+                                            <span class="badge" :class="getTriggerStateClass(selectedTriggerDetails.state)">
+                                                {{ selectedTriggerDetails.state }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>Priority:</th>
+                                        <td>{{ selectedTriggerDetails.priority }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Misfire Instruction:</th>
+                                        <td>{{ selectedTriggerDetails.misfireInstr }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Has Job Data:</th>
+                                        <td>{{ selectedTriggerDetails.hasJobData ? 'Yes' : 'No' }}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6>Schedule Information</h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <th>Start Time:</th>
+                                        <td>{{ selectedTriggerDetails.startTime }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>End Time:</th>
+                                        <td>{{ selectedTriggerDetails.endTime }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Next Fire Time:</th>
+                                        <td>{{ selectedTriggerDetails.nextFireTime }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Previous Fire Time:</th>
+                                        <td>{{ selectedTriggerDetails.prevFireTime }}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="col-md-6" v-if="selectedTriggerDetails.type === 'CRON'">
+                                <h6>Cron Trigger Details</h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <th>Cron Expression:</th>
+                                        <td>{{ selectedTriggerDetails.cronExpression }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Time Zone:</th>
+                                        <td>{{ selectedTriggerDetails.timeZoneId || 'Default' }}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="col-md-6" v-if="selectedTriggerDetails.type === 'SIMPLE'">
+                                <h6>Simple Trigger Details</h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <th>Repeat Count:</th>
+                                        <td>{{ selectedTriggerDetails.repeatCount }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Repeat Interval:</th>
+                                        <td>{{ selectedTriggerDetails.repeatInterval }} ms</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Times Triggered:</th>
+                                        <td>{{ selectedTriggerDetails.timesTriggered }}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delete Job Confirmation Modal -->
+        <div class="modal fade" id="deleteJobModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Confirm Delete Job</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" v-if="jobToDelete">
+                        <p>Are you sure you want to delete the job <strong>{{ jobToDelete.group }}.{{ jobToDelete.name }}</strong>?</p>
+                        <p class="text-danger">This will also delete all associated triggers and cannot be undone.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger" @click="deleteJob">Delete</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delete Trigger Confirmation Modal -->
+        <div class="modal fade" id="deleteTriggerModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Confirm Delete Trigger</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" v-if="triggerToDelete">
+                        <p>Are you sure you want to delete the trigger <strong>{{ triggerToDelete.group }}.{{ triggerToDelete.name }}</strong>?</p>
+                        <p class="text-danger">This action cannot be undone.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger" @click="deleteTrigger">Delete</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Clear Tables Confirmation Modal -->
+        <div class="modal fade" id="clearTablesModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Confirm Clear Tables</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to clear all Quartz tables?</p>
+                        <p class="text-danger">This will delete all jobs, triggers, and scheduler data. This action cannot be undone.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger" @click="clearTables">Clear Tables</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection Info Modal -->
+        <div class="modal fade" id="connectionInfoModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Connection Information</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <table class="table table-sm">
+                            <tr>
+                                <th>JDBC URL:</th>
+                                <td>{{ connectionInfo.url }}</td>
+                            </tr>
+                            <tr>
+                                <th>Driver:</th>
+                                <td>{{ connectionInfo.driver }}</td>
+                            </tr>
+                            <tr>
+                                <th>Schema:</th>
+                                <td>{{ connectionInfo.schema }}</td>
+                            </tr>
+                            <tr>
+                                <th>Table Prefix:</th>
+                                <td>{{ connectionInfo.tablePrefix }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // Create Vue app
+        const app = Vue.createApp({
+            data() {
+                return {
+                    activeView: 'jobs',
+                    loading: false,
+                    jobs: [],
+                    triggers: [],
+                    runningJobs: [],
+                    pausedGroups: [],
+                    schedulers: [],
+                    selectedJobDetails: null,
+                    selectedTriggerDetails: null,
+                    jobToDelete: null,
+                    triggerToDelete: null,
+                    jobsFilter: '',
+                    triggersFilter: '',
+                    connectionInfo: {
+                        url: '',
+                        driver: '',
+                        schema: '',
+                        tablePrefix: ''
+                    },
+                    modals: {}
+                };
+            },
+            computed: {
+                filteredJobs() {
+                    if (!this.jobsFilter) return this.jobs;
+                    const filter = this.jobsFilter.toLowerCase();
+                    return this.jobs.filter(job => 
+                        job.name.toLowerCase().includes(filter) || 
+                        job.group.toLowerCase().includes(filter) ||
+                        (job.description && job.description.toLowerCase().includes(filter))
+                    );
+                },
+                filteredTriggers() {
+                    if (!this.triggersFilter) return this.triggers;
+                    const filter = this.triggersFilter.toLowerCase();
+                    return this.triggers.filter(trigger => 
+                        trigger.name.toLowerCase().includes(filter) || 
+                        trigger.group.toLowerCase().includes(filter) ||
+                        trigger.jobName.toLowerCase().includes(filter) ||
+                        trigger.jobGroup.toLowerCase().includes(filter)
+                    );
+                }
+            },
+            methods: {
+                setActiveView(view) {
+                    this.activeView = view;
+                    this.refreshData();
+                },
+                async refreshData() {
+                    this.loading = true;
+                    try {
+                        // Load connection info
+                        if (!this.connectionInfo.url) {
+                            await this.loadConnectionInfo();
+                        }
+                        
+                        // Load data based on active view
+                        switch (this.activeView) {
+                            case 'jobs':
+                                await this.loadJobs();
+                                break;
+                            case 'triggers':
+                                await this.loadTriggers();
+                                break;
+                            case 'running':
+                                await this.loadRunningJobs();
+                                break;
+                            case 'paused':
+                                await this.loadPausedGroups();
+                                break;
+                            case 'schedulers':
+                                await this.loadSchedulers();
+                                break;
+                        }
+                    } catch (error) {
+                        console.error('Error refreshing data:', error);
+                        alert('Error loading data: ' + error.message);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async loadConnectionInfo() {
+                    const response = await axios.get('/api/quartz/info');
+                    this.connectionInfo = response.data;
+                },
+                async loadJobs() {
+                    const response = await axios.get('/api/quartz/jobs');
+                    this.jobs = response.data;
+                },
+                async loadTriggers() {
+                    const response = await axios.get('/api/quartz/triggers');
+                    this.triggers = response.data;
+                },
+                async loadRunningJobs() {
+                    const response = await axios.get('/api/quartz/running-jobs');
+                    this.runningJobs = response.data;
+                },
+                async loadPausedGroups() {
+                    const response = await axios.get('/api/quartz/paused-groups');
+                    this.pausedGroups = response.data;
+                },
+                async loadSchedulers() {
+                    const response = await axios.get('/api/quartz/schedulers');
+                    this.schedulers = response.data;
+                },
+                async viewJobDetails(job) {
+                    this.loading = true;
+                    try {
+                        const response = await axios.get(`/api/quartz/jobs/${job.group}/${job.name}`);
+                        this.selectedJobDetails = response.data;
+                        this.modals.jobDetails = new bootstrap.Modal(document.getElementById('jobDetailsModal'));
+                        this.modals.jobDetails.show();
+                    } catch (error) {
+                        console.error('Error loading job details:', error);
+                        alert('Error loading job details: ' + error.message);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async viewTriggerDetails(trigger) {
+                    this.loading = true;
+                    try {
+                        const response = await axios.get(`/api/quartz/triggers/${trigger.group}/${trigger.name}`);
+                        this.selectedTriggerDetails = response.data;
+                        this.modals.triggerDetails = new bootstrap.Modal(document.getElementById('triggerDetailsModal'));
+                        this.modals.triggerDetails.show();
+                    } catch (error) {
+                        console.error('Error loading trigger details:', error);
+                        alert('Error loading trigger details: ' + error.message);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                confirmDeleteJob(job) {
+                    this.jobToDelete = job;
+                    this.modals.deleteJob = new bootstrap.Modal(document.getElementById('deleteJobModal'));
+                    this.modals.deleteJob.show();
+                },
+                async deleteJob() {
+                    if (!this.jobToDelete) return;
+                    
+                    this.loading = true;
+                    try {
+                        await axios.delete(`/api/quartz/jobs/${this.jobToDelete.group}/${this.jobToDelete.name}`);
+                        this.modals.deleteJob.hide();
+                        this.refreshData();
+                    } catch (error) {
+                        console.error('Error deleting job:', error);
+                        alert('Error deleting job: ' + error.message);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                confirmDeleteTrigger(trigger) {
+                    this.triggerToDelete = trigger;
+                    this.modals.deleteTrigger = new bootstrap.Modal(document.getElementById('deleteTriggerModal'));
+                    this.modals.deleteTrigger.show();
+                },
+                async deleteTrigger() {
+                    if (!this.triggerToDelete) return;
+                    
+                    this.loading = true;
+                    try {
+                        await axios.delete(`/api/quartz/triggers/${this.triggerToDelete.group}/${this.triggerToDelete.name}`);
+                        this.modals.deleteTrigger.hide();
+                        this.refreshData();
+                    } catch (error) {
+                        console.error('Error deleting trigger:', error);
+                        alert('Error deleting trigger: ' + error.message);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async clearTables() {
+                    this.loading = true;
+                    try {
+                        await axios.delete('/api/quartz/clear');
+                        document.getElementById('clearTablesModal').querySelector('.btn-close').click();
+                        this.refreshData();
+                    } catch (error) {
+                        console.error('Error clearing tables:', error);
+                        alert('Error clearing tables: ' + error.message);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                getTriggerTypeClass(type) {
+                    switch (type) {
+                        case 'CRON': return 'bg-primary';
+                        case 'SIMPLE': return 'bg-success';
+                        case 'DAILY_TIME_INTERVAL': return 'bg-info';
+                        case 'CALENDAR_INTERVAL': return 'bg-warning';
+                        default: return 'bg-secondary';
+                    }
+                },
+                getTriggerStateClass(state) {
+                    switch (state) {
+                        case 'NORMAL': return 'bg-success';
+                        case 'PAUSED': return 'bg-warning';
+                        case 'COMPLETE': return 'bg-info';
+                        case 'ERROR': return 'bg-danger';
+                        case 'BLOCKED': return 'bg-dark';
+                        default: return 'bg-secondary';
+                    }
+                }
+            },
+            mounted() {
+                this.refreshData();
+            }
+        });
+
+        // Mount the app
+        app.mount('#app');
+    </script>
+</body>
+</html>

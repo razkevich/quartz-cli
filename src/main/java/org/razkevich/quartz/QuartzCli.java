@@ -17,6 +17,8 @@ import tech.tablesaw.columns.Column;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.concurrent.CountDownLatch;
+import org.springframework.context.ConfigurableApplicationContext;
 
 /**
  * Command-line interface for Quartz Scheduler
@@ -27,7 +29,7 @@ import java.time.ZoneId;
          version = "1.0")
 public class QuartzCli implements Callable<Integer> {
     
-    @Option(names = {"-u", "--url"}, 
+    @Option(names = {"-u", "--url"},
             description = "JDBC URL for Quartz database", 
             required = true)
     private String jdbcUrl;
@@ -142,6 +144,9 @@ public class QuartzCli implements Callable<Integer> {
                     }
                     deleteTrigger(group, name);
                     break;
+                case "webapp":
+                    startWebApp();
+                    break;
                 default:
                     System.out.println("Unknown command: " + command);
                     showHelp();
@@ -212,6 +217,10 @@ public class QuartzCli implements Callable<Integer> {
         table.stringColumn("Description").append("Clear all Quartz tables (requires --force)");
         table.stringColumn("Required Parameters").append("--force");
         
+        table.stringColumn("Command").append("webapp");
+        table.stringColumn("Description").append("Start web application interface on port 8080");
+        table.stringColumn("Required Parameters").append("None");
+        
         System.out.println(TableFormatter.formatTable(table));
         System.out.println();
         System.out.println("Common Options:");
@@ -221,6 +230,63 @@ public class QuartzCli implements Callable<Integer> {
         System.out.println("  --json         : Output in JSON format");
         System.out.println("  --verbose, -v  : Enable verbose output");
         System.out.println("  --scheduler, -S: Filter by scheduler name");
+    }
+    
+    /**
+     * Start the web application interface
+     */
+    private void startWebApp() {
+        System.out.println("Starting Quartz Web Console on port 8080...");
+        System.out.println("Database URL: " + jdbcUrl);
+        
+        // Set system properties for the web application to use
+        System.setProperty("quartz.jdbc.url", jdbcUrl);
+        System.setProperty("quartz.jdbc.username", username);
+        System.setProperty("quartz.jdbc.password", password);
+        System.setProperty("quartz.jdbc.driver", driver);
+        if (schema != null) {
+            System.setProperty("quartz.jdbc.schema", schema);
+        }
+        System.setProperty("quartz.table.prefix", tablePrefix);
+        
+        // Create a latch to keep the application running
+        final CountDownLatch latch = new CountDownLatch(1);
+        
+        // Start the Spring Boot application in a separate thread
+        try {
+            // Create and configure the Spring Boot application
+            org.springframework.boot.SpringApplication app = 
+                new org.springframework.boot.SpringApplication(org.razkevich.quartz.QuartzWebApp.class);
+            
+            // Start the application and get the context
+            ConfigurableApplicationContext context = app.run(new String[]{});
+            
+            // Add a shutdown hook to release the latch when the application is stopped
+            Runtime.getRuntime().addShutdownHook(new Thread() {
+                @Override
+                public void run() {
+                    System.out.println("Shutting down Quartz Web Console...");
+                    latch.countDown();
+                }
+            });
+            
+            System.out.println("Quartz Web Console is running. Press Ctrl+C to stop.");
+            
+            // Wait for the latch to be released (which will happen when the JVM is shutting down)
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            
+            System.out.println("Web application has been stopped.");
+            
+        } catch (Exception e) {
+            System.err.println("Error starting web application: " + e.getMessage());
+            if (verbose) {
+                e.printStackTrace();
+            }
+        }
     }
     
     private void listJobsWithSQL(String groupFilter, String nameFilter) throws Exception {

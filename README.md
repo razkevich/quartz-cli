@@ -1,6 +1,6 @@
 # Quartz CLI
 
-A simple, fast command-line interface for Quartz Scheduler database connections.
+A simple, fast command-line interface and web console for Quartz Scheduler database connections.
 
 ## Features
 
@@ -14,6 +14,7 @@ A simple, fast command-line interface for Quartz Scheduler database connections.
 - Support for PostgreSQL and other JDBC-compatible databases
 - Schema and table prefix customization
 - JSON output format option
+- Interactive web console interface
 
 ## Build
 
@@ -67,6 +68,7 @@ java -jar quartz-cli-0.0.1-SNAPSHOT-jar-with-dependencies.jar [options]
 | delete-job | Delete a job and its triggers | At least one of: --group, --name |
 | delete-trigger | Delete a trigger | At least one of: --group, --name |
 | clear | Clear all Quartz tables | --force |
+| webapp | Start web application interface on port 8080 | None |
 
 ## Command Examples
 
@@ -175,4 +177,29 @@ java -jar quartz-cli-0.0.1-SNAPSHOT-jar-with-dependencies.jar \
   -p custom_qrtz_ \
   -c list-jobs
 ```
+
+## Web Console
+
+Quartz CLI includes an interactive web console that provides a user-friendly interface for managing Quartz Scheduler databases.
+
+### Starting the Web Console
+
+```bash
+java -jar quartz-cli-0.0.1-SNAPSHOT-jar-with-dependencies.jar \
+  -u "jdbc:postgresql://localhost:5432/mydb" \
+  -U myuser \
+  -P mypassword \
+  -c webapp
+```
+
+This will start a web server on port 8080. Open your browser and navigate to http://localhost:8080 to access the web console.
+
+### Web Console Features
+
+- Interactive dashboard for viewing and managing Quartz jobs and triggers
+- Real-time data refresh
+- Detailed job and trigger information
+- Easy deletion of jobs and triggers
+- Mobile-friendly responsive design
+- No additional setup required
 
