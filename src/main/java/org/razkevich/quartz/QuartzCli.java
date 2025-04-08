@@ -17,6 +17,8 @@ import tech.tablesaw.columns.Column;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Map;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -298,85 +300,52 @@ public class QuartzCli implements Callable<Integer> {
             DataSource dataSource = QuartzConnectionService.createDataSource(
                 jdbcUrl, username, password, driver, schema);
             
-            String tablePrefix = this.tablePrefix.toLowerCase();
-            String jobTableName = (schema != null && !schema.isEmpty()) ? 
-                schema + "." + tablePrefix + "job_details" : 
-                tablePrefix + "job_details";
+            QuartzDataService quartzDataService = new QuartzDataService(
+                dataSource, schema, tablePrefix, schedulerName);
             
-            String triggerTableName = (schema != null && !schema.isEmpty()) ? 
-                schema + "." + tablePrefix + "triggers" : 
-                tablePrefix + "triggers";
+            List<Map<String, Object>> jobs = quartzDataService.listJobs(groupFilter, nameFilter);
             
-            String sql = "SELECT j.job_group, j.job_name, j.description, j.job_class_name, " +
-                        "COUNT(t.trigger_name) as trigger_count " +
-                        "FROM " + jobTableName + " j " +
-                        "LEFT JOIN " + triggerTableName + " t ON " +
-                        "j.job_name = t.job_name AND j.job_group = t.job_group " +
-                        "WHERE 1=1 " +
-                        (groupFilter != null ? "AND j.job_group LIKE ? " : "") +
-                        (nameFilter != null ? "AND j.job_name LIKE ? " : "") +
-                        (schedulerName != null ? "AND j.SCHED_NAME = ? " : "") +
-                        "GROUP BY j.job_group, j.job_name, j.description, j.job_class_name " +
-                        "ORDER BY j.job_group, j.job_name";
-            
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql)) {
-                
-                int paramIndex = 1;
-                if (groupFilter != null) {
-                    stmt.setString(paramIndex++, "%" + groupFilter + "%");
-                }
-                if (nameFilter != null) {
-                    stmt.setString(paramIndex++, "%" + nameFilter + "%");
-                }
-                if (schedulerName != null) {
-                    stmt.setString(paramIndex++, schedulerName);
-                }
-                
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (jsonOutput) {
-                        System.out.println("[");
-                        boolean first = true;
-                        while (rs.next()) {
-                            if (!first) {
-                                System.out.println(",");
-                            }
-                            first = false;
-                            System.out.println("  {");
-                            System.out.println("    \"group\": \"" + rs.getString("job_group") + "\",");
-                            System.out.println("    \"name\": \"" + rs.getString("job_name") + "\",");
-                            System.out.println("    \"class\": \"" + rs.getString("job_class_name") + "\",");
-                            System.out.println("    \"description\": \"" + rs.getString("description") + "\",");
-                            System.out.println("    \"triggerCount\": " + rs.getInt("trigger_count"));
-                            System.out.print("  }");
-                        }
-                        System.out.println("\n]");
-                    } else {
-                        Table table = Table.create("Jobs")
-                            .addColumns(
-                                StringColumn.create("Group"),
-                                StringColumn.create("Name"),
-                                StringColumn.create("Class"),
-                                StringColumn.create("Description"),
-                                IntColumn.create("Triggered")
-                            );
-                        
-                        boolean hasRows = false;
-                        while (rs.next()) {
-                            hasRows = true;
-                            table.stringColumn("Group").append(rs.getString("job_group"));
-                            table.stringColumn("Name").append(rs.getString("job_name"));
-                            table.stringColumn("Class").append(rs.getString("job_class_name"));
-                            table.stringColumn("Description").append(rs.getString("description"));
-                            table.intColumn("Triggered").append(rs.getInt("trigger_count"));
-                        }
-                        
-                        if (hasRows) {
-                            System.out.println(TableFormatter.formatTable(table));
-                        } else {
-                            System.out.println("No jobs found.");
-                        }
+            if (jsonOutput) {
+                System.out.println("[");
+                boolean first = true;
+                for (Map<String, Object> job : jobs) {
+                    if (!first) {
+                        System.out.println(",");
                     }
+                    first = false;
+                    System.out.println("  {");
+                    System.out.println("    \"group\": \"" + job.get("group") + "\",");
+                    System.out.println("    \"name\": \"" + job.get("name") + "\",");
+                    System.out.println("    \"class\": \"" + job.get("class") + "\",");
+                    System.out.println("    \"description\": \"" + job.get("description") + "\",");
+                    System.out.println("    \"triggerCount\": " + job.get("triggerCount"));
+                    System.out.print("  }");
+                }
+                System.out.println("\n]");
+            } else {
+                Table table = Table.create("Jobs")
+                    .addColumns(
+                        StringColumn.create("Group"),
+                        StringColumn.create("Name"),
+                        StringColumn.create("Class"),
+                        StringColumn.create("Description"),
+                        IntColumn.create("Triggered")
+                    );
+                
+                boolean hasRows = false;
+                for (Map<String, Object> job : jobs) {
+                    hasRows = true;
+                    table.stringColumn("Group").append((String) job.get("group"));
+                    table.stringColumn("Name").append((String) job.get("name"));
+                    table.stringColumn("Class").append((String) job.get("class"));
+                    table.stringColumn("Description").append((String) job.get("description"));
+                    table.intColumn("Triggered").append((Integer) job.get("triggerCount"));
+                }
+                
+                if (hasRows) {
+                    System.out.println(TableFormatter.formatTable(table));
+                } else {
+                    System.out.println("No jobs found.");
                 }
             }
         } catch (Exception e) {
@@ -395,93 +364,64 @@ public class QuartzCli implements Callable<Integer> {
         try {
             DataSource dataSource = QuartzConnectionService.createDataSource(
                 jdbcUrl, username, password, driver, schema);
-            
-            String tablePrefix = this.tablePrefix.toLowerCase();
-            String triggerTableName = (schema != null && !schema.isEmpty()) ? 
-                schema + "." + tablePrefix + "triggers" : 
-                tablePrefix + "triggers";
-            
-            String sql = "SELECT t.trigger_name, t.trigger_group, t.job_name, t.job_group, " +
-                         "t.next_fire_time, t.prev_fire_time, t.trigger_type " +
-                         "FROM " + triggerTableName + " t " +
-                         "WHERE 1=1 " +
-                         (groupFilter != null ? "AND t.trigger_group = ? " : "") +
-                         (nameFilter != null ? "AND t.job_name = ? " : "") +
-                         (schedulerName != null ? "AND t.SCHED_NAME = ? " : "") +
-                         "ORDER BY t.next_fire_time DESC NULLS FIRST, t.trigger_group, t.trigger_name";
-            
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql)) {
                 
-                int paramIndex = 1;
-                if (groupFilter != null) {
-                    stmt.setString(paramIndex++, groupFilter);
-                }
-                if (nameFilter != null) {
-                    stmt.setString(paramIndex++, nameFilter);
-                }
-                if (schedulerName != null) {
-                    stmt.setString(paramIndex++, schedulerName);
-                }
-                
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (jsonOutput) {
-                        System.out.println("[");
-                        boolean first = true;
-                        while (rs.next()) {
-                            if (!first) {
-                                System.out.println(",");
-                            }
-                            first = false;
-                            System.out.println("  {");
-                            System.out.println("    \"group\": \"" + rs.getString("trigger_group") + "\",");
-                            System.out.println("    \"name\": \"" + rs.getString("trigger_name") + "\",");
-                            System.out.println("    \"job\": \"" + rs.getString("job_group") + "." + rs.getString("job_name") + "\",");
-                            System.out.println("    \"type\": \"" + rs.getString("trigger_type") + "\",");
-                            System.out.println("    \"nextFire\": \"" + formatRelativeTime(rs.getLong("next_fire_time")) + "\",");
-                            System.out.println("    \"previousFire\": \"" + formatRelativeTime(rs.getLong("prev_fire_time")) + "\"");
-                            System.out.print("  }");
-                        }
-                        System.out.println("\n]");
-                    } else {
-                        Table table = Table.create("Triggers")
-                            .addColumns(
-                                StringColumn.create("Group"),
-                                StringColumn.create("Name"),
-                                StringColumn.create("Job"),
-                                StringColumn.create("Type"),
-                                StringColumn.create("Next Fire"),
-                                StringColumn.create("Previous Fire")
-                            );
-                        
-                        boolean hasRows = false;
-                        while (rs.next()) {
-                            hasRows = true;
-                            String name = rs.getString("trigger_name");
-                            String triggerGroup = rs.getString("trigger_group");
-                            String jobName = rs.getString("job_name");
-                            String jobGroup = rs.getString("job_group");
-                            long nextFireTime = rs.getLong("next_fire_time");
-                            long prevFireTime = rs.getLong("prev_fire_time");
-                            String triggerType = rs.getString("trigger_type");
-                            
-                            String nextFire = nextFireTime > 0 ? formatRelativeTime(nextFireTime) : "";
-                            String prevFire = prevFireTime > 0 ? formatRelativeTime(prevFireTime) : "";
-                            
-                            table.stringColumn("Group").append(triggerGroup);
-                            table.stringColumn("Name").append(name);
-                            table.stringColumn("Job").append(jobGroup + "." + jobName);
-                            table.stringColumn("Type").append(triggerType);
-                            table.stringColumn("Next Fire").append(nextFire);
-                            table.stringColumn("Previous Fire").append(prevFire);
-                        }
-                        
-                        if (hasRows) {
-                            System.out.println(TableFormatter.formatTable(table));
-                        } else {
-                            System.out.println("No triggers found.");
-                        }
+            QuartzDataService quartzDataService = new QuartzDataService(
+                dataSource, schema, tablePrefix, schedulerName);
+            
+            List<Map<String, Object>> triggers = quartzDataService.listTriggers(groupFilter, nameFilter);
+            
+            if (jsonOutput) {
+                System.out.println("[");
+                boolean first = true;
+                for (Map<String, Object> trigger : triggers) {
+                    if (!first) {
+                        System.out.println(",");
                     }
+                    first = false;
+                    System.out.println("  {");
+                    System.out.println("    \"group\": \"" + trigger.get("group") + "\",");
+                    System.out.println("    \"name\": \"" + trigger.get("name") + "\",");
+                    System.out.println("    \"job\": \"" + trigger.get("jobGroup") + "." + trigger.get("jobName") + "\",");
+                    System.out.println("    \"type\": \"" + trigger.get("type") + "\",");
+                    System.out.println("    \"nextFire\": \"" + trigger.get("nextFireTime") + "\",");
+                    System.out.println("    \"previousFire\": \"" + trigger.get("prevFireTime") + "\"");
+                    System.out.print("  }");
+                }
+                System.out.println("\n]");
+            } else {
+                Table table = Table.create("Triggers")
+                    .addColumns(
+                        StringColumn.create("Group"),
+                        StringColumn.create("Name"),
+                        StringColumn.create("Job"),
+                        StringColumn.create("Type"),
+                        StringColumn.create("Next Fire"),
+                        StringColumn.create("Previous Fire")
+                    );
+                
+                boolean hasRows = false;
+                for (Map<String, Object> trigger : triggers) {
+                    hasRows = true;
+                    String name = (String) trigger.get("name");
+                    String triggerGroup = (String) trigger.get("group");
+                    String jobName = (String) trigger.get("jobName");
+                    String jobGroup = (String) trigger.get("jobGroup");
+                    String triggerType = (String) trigger.get("type");
+                    String nextFire = (String) trigger.get("nextFireTime");
+                    String prevFire = (String) trigger.get("prevFireTime");
+                    
+                    table.stringColumn("Group").append(triggerGroup);
+                    table.stringColumn("Name").append(name);
+                    table.stringColumn("Job").append(jobGroup + "." + jobName);
+                    table.stringColumn("Type").append(triggerType);
+                    table.stringColumn("Next Fire").append(nextFire);
+                    table.stringColumn("Previous Fire").append(prevFire);
+                }
+                
+                if (hasRows) {
+                    System.out.println(TableFormatter.formatTable(table));
+                } else {
+                    System.out.println("No triggers found.");
                 }
             }
         } catch (Exception e) {
@@ -522,66 +462,52 @@ public class QuartzCli implements Callable<Integer> {
         try {
             DataSource dataSource = QuartzConnectionService.createDataSource(
                 jdbcUrl, username, password, driver, schema);
-            
-            String tablePrefix = this.tablePrefix.toLowerCase();
-            String firedTriggersTable = (schema != null && !schema.isEmpty()) ? 
-                schema + "." + tablePrefix + "fired_triggers" : 
-                tablePrefix + "fired_triggers";
-            
-            String sql = "SELECT ft.entry_id, ft.trigger_name, ft.trigger_group, " +
-                         "ft.job_name, ft.job_group, ft.fired_time, ft.state " +
-                         "FROM " + firedTriggersTable + " ft " +
-                         "WHERE ft.state = 'EXECUTING' " +
-                         (schedulerName != null ? "AND ft.SCHED_NAME = ? " : "") +
-                         "ORDER BY ft.fired_time";
-            
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql)) {
                 
-                if (schedulerName != null) {
-                    stmt.setString(1, schedulerName);
+            QuartzDataService quartzDataService = new QuartzDataService(
+                dataSource, schema, tablePrefix, schedulerName);
+                
+            List<Map<String, Object>> runningJobs = quartzDataService.listRunningJobs();
+            
+            if (jsonOutput) {
+                System.out.println("[");
+                boolean first = true;
+                for (Map<String, Object> job : runningJobs) {
+                    if (!first) {
+                        System.out.println(",");
+                    }
+                    first = false;
+                    System.out.println("  {");
+                    System.out.println("    \"job\": \"" + job.get("jobGroup") + "." + job.get("jobName") + "\",");
+                    System.out.println("    \"trigger\": \"" + job.get("triggerGroup") + "." + job.get("triggerName") + "\",");
+                    System.out.println("    \"firedTime\": \"" + job.get("firedTime") + "\",");
+                    System.out.println("    \"state\": \"" + job.get("state") + "\"");
+                    System.out.print("  }");
+                }
+                System.out.println("\n]");
+            } else {
+                Table table = Table.create("Running Jobs")
+                    .addColumns(
+                        StringColumn.create("Job"),
+                        StringColumn.create("Trigger"),
+                        StringColumn.create("Fired Time"),
+                        StringColumn.create("State")
+                    );
+                
+                boolean hasRows = false;
+                for (Map<String, Object> job : runningJobs) {
+                    hasRows = true;
+                    table.stringColumn("Job").append(
+                        (String)job.get("jobGroup") + "." + (String)job.get("jobName"));
+                    table.stringColumn("Trigger").append(
+                        (String)job.get("triggerGroup") + "." + (String)job.get("triggerName"));
+                    table.stringColumn("Fired Time").append((String)job.get("firedTime"));
+                    table.stringColumn("State").append((String)job.get("state"));
                 }
                 
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (jsonOutput) {
-                        System.out.println("[");
-                        boolean first = true;
-                        while (rs.next()) {
-                            if (!first) {
-                                System.out.println(",");
-                            }
-                            first = false;
-                            System.out.println("  {");
-                            System.out.println("    \"job\": \"" + rs.getString("job_group") + "." + rs.getString("job_name") + "\",");
-                            System.out.println("    \"trigger\": \"" + rs.getString("trigger_group") + "." + rs.getString("trigger_name") + "\",");
-                            System.out.println("    \"firedTime\": " + rs.getLong("fired_time") + ",");
-                            System.out.println("    \"state\": \"" + rs.getString("state") + "\"");
-                            System.out.print("  }");
-                        }
-                        System.out.println("\n]");
-                    } else {
-                        Table table = Table.create("Running Jobs")
-                            .addColumns(
-                                StringColumn.create("Job"),
-                                StringColumn.create("Trigger"),
-                                DateTimeColumn.create("Fired Time"),
-                                StringColumn.create("State")
-                            );
-                        
-                        while (rs.next()) {
-                            table.stringColumn("Job").append(
-                                rs.getString("job_group") + "." + rs.getString("job_name"));
-                            table.stringColumn("Trigger").append(
-                                rs.getString("trigger_group") + "." + rs.getString("trigger_name"));
-                            table.dateTimeColumn("Fired Time").append(
-                                Instant.ofEpochMilli(rs.getLong("fired_time"))
-                                    .atZone(ZoneId.systemDefault())
-                                    .toLocalDateTime());
-                            table.stringColumn("State").append(rs.getString("state"));
-                        }
-                        
-                        System.out.println(TableFormatter.formatTable(table));
-                    }
+                if (hasRows) {
+                    System.out.println(TableFormatter.formatTable(table));
+                } else {
+                    System.out.println("No running jobs found.");
                 }
             }
         } catch (Exception e) {
@@ -600,51 +526,41 @@ public class QuartzCli implements Callable<Integer> {
         try {
             DataSource dataSource = QuartzConnectionService.createDataSource(
                 jdbcUrl, username, password, driver, schema);
-            
-            String tablePrefix = this.tablePrefix.toLowerCase();
-            String pausedTriggerGroupsTable = (schema != null && !schema.isEmpty()) ? 
-                schema + "." + tablePrefix + "paused_trigger_grps" : 
-                tablePrefix + "paused_trigger_grps";
-            
-            String sql = "SELECT trigger_group " +
-                         "FROM " + pausedTriggerGroupsTable + " " +
-                         "WHERE 1=1 " +
-                         (schedulerName != null ? "AND SCHED_NAME = ? " : "") +
-                         "ORDER BY trigger_group";
-            
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql)) {
                 
-                if (schedulerName != null) {
-                    stmt.setString(1, schedulerName);
+            QuartzDataService quartzDataService = new QuartzDataService(
+                dataSource, schema, tablePrefix, schedulerName);
+                
+            List<Map<String, Object>> pausedGroups = quartzDataService.listPausedTriggerGroups();
+            
+            if (jsonOutput) {
+                System.out.println("[");
+                boolean first = true;
+                for (Map<String, Object> group : pausedGroups) {
+                    if (!first) {
+                        System.out.println(",");
+                    }
+                    first = false;
+                    System.out.println("  {");
+                    System.out.println("    \"group\": \"" + group.get("triggerGroup") + "\"");
+                    System.out.print("  }");
+                }
+                System.out.println("\n]");
+            } else {
+                Table table = Table.create("Paused Trigger Groups")
+                    .addColumns(
+                        StringColumn.create("Group")
+                    );
+                
+                boolean hasRows = false;
+                for (Map<String, Object> group : pausedGroups) {
+                    hasRows = true;
+                    table.stringColumn("Group").append((String)group.get("triggerGroup"));
                 }
                 
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (jsonOutput) {
-                        System.out.println("[");
-                        boolean first = true;
-                        while (rs.next()) {
-                            if (!first) {
-                                System.out.println(",");
-                            }
-                            first = false;
-                            System.out.println("  {");
-                            System.out.println("    \"group\": \"" + rs.getString("trigger_group") + "\"");
-                            System.out.print("  }");
-                        }
-                        System.out.println("\n]");
-                    } else {
-                        Table table = Table.create("Paused Trigger Groups")
-                            .addColumns(
-                                StringColumn.create("Group")
-                            );
-                        
-                        while (rs.next()) {
-                            table.stringColumn("Group").append(rs.getString("trigger_group"));
-                        }
-                        
-                        System.out.println(TableFormatter.formatTable(table));
-                    }
+                if (hasRows) {
+                    System.out.println(TableFormatter.formatTable(table));
+                } else {
+                    System.out.println("No paused trigger groups found.");
                 }
             }
         } catch (Exception e) {
@@ -655,28 +571,32 @@ public class QuartzCli implements Callable<Integer> {
         }
     }
     
-    private void listSchedulers() throws SQLException {
-        DataSource dataSource = QuartzConnectionService.createDataSource(
-            jdbcUrl, username, password, driver, schema);
+    private void listSchedulers() throws Exception {
+        if (verbose) {
+            System.out.println("Listing active schedulers...");
+        }
         
-        String sql = "SELECT INSTANCE_NAME, LAST_CHECKIN_TIME, CHECKIN_INTERVAL FROM " + tablePrefix + "scheduler_state ORDER BY LAST_CHECKIN_TIME DESC";
-        
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
+        try {
+            DataSource dataSource = QuartzConnectionService.createDataSource(
+                jdbcUrl, username, password, driver, schema);
+                
+            QuartzDataService quartzDataService = new QuartzDataService(
+                dataSource, schema, tablePrefix, schedulerName);
+                
+            List<Map<String, Object>> schedulers = quartzDataService.listSchedulers();
             
             if (jsonOutput) {
                 System.out.println("[");
                 boolean first = true;
-                while (rs.next()) {
+                for (Map<String, Object> scheduler : schedulers) {
                     if (!first) {
                         System.out.println(",");
                     }
                     first = false;
                     System.out.println("  {");
-                    System.out.println("    \"instanceName\": \"" + rs.getString("instance_name") + "\",");
-                    System.out.println("    \"lastCheckin\": \"" + formatRelativeTime(rs.getLong("last_checkin_time")) + "\",");
-                    System.out.println("    \"checkinInterval\": " + rs.getLong("checkin_interval"));
+                    System.out.println("    \"instanceName\": \"" + scheduler.get("instanceName") + "\",");
+                    System.out.println("    \"lastCheckin\": \"" + scheduler.get("lastCheckinTime") + "\",");
+                    System.out.println("    \"checkinInterval\": " + scheduler.get("checkinInterval"));
                     System.out.print("  }");
                 }
                 System.out.println("\n]");
@@ -688,22 +608,33 @@ public class QuartzCli implements Callable<Integer> {
                         LongColumn.create("Checkin Interval (ms)")
                     );
                 
-                while (rs.next()) {
-                    String instanceName = rs.getString("instance_name");
-                    long lastCheckin = rs.getLong("last_checkin_time");
-                    long interval = rs.getLong("checkin_interval");
+                boolean hasRows = false;
+                for (Map<String, Object> scheduler : schedulers) {
+                    hasRows = true;
+                    String instanceName = (String) scheduler.get("instanceName");
+                    String lastCheckin = (String) scheduler.get("lastCheckinTime");
+                    long interval = (Long) scheduler.get("checkinInterval");
                     
                     table.stringColumn("Instance Name").append(instanceName);
-                    table.stringColumn("Last Checkin").append(formatRelativeTime(lastCheckin));
+                    table.stringColumn("Last Checkin").append(lastCheckin);
                     table.longColumn("Checkin Interval (ms)").append(interval);
                 }
                 
-                System.out.println(TableFormatter.formatTable(table));
+                if (hasRows) {
+                    System.out.println(TableFormatter.formatTable(table));
+                } else {
+                    System.out.println("No active schedulers found.");
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Error listing schedulers: " + e.getMessage());
+            if (verbose) {
+                e.printStackTrace();
             }
         }
     }
     
-    private void clearTables() throws SQLException {
+    private void clearTables() throws Exception {
         if (!forceClear) {
             System.out.println("\nWARNING: This will delete ALL data from Quartz tables!");
             System.out.println("This operation cannot be undone.");
@@ -717,47 +648,22 @@ public class QuartzCli implements Callable<Integer> {
             }
         }
         
-        // Tables ordered by dependencies (child tables first)
-        String[] tables = {
-            "fired_triggers",           // No dependencies
-            "paused_trigger_grps",      // No dependencies
-            "locks",                    // No dependencies
-            "simple_triggers",          // Depends on triggers
-            "cron_triggers",            // Depends on triggers
-            "blob_triggers",            // Depends on triggers
-            "triggers",                 // Depends on job_details
-            "job_details",              // Depends on scheduler_state
-            "scheduler_state"           // No dependencies
-        };
-        
-        DataSource dataSource = QuartzConnectionService.createDataSource(
-            jdbcUrl, username, password, driver, schema);
-        
-        try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
-            
-            try {
-                for (String table : tables) {
-                    String sql = "DELETE FROM " + tablePrefix + table;
-                    if (triggerName != null && !triggerName.isEmpty()) {
-                        sql += " WHERE trigger_name = ?";
-                    }
-                    
-                    try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                        if (triggerName != null && !triggerName.isEmpty()) {
-                            stmt.setString(1, triggerName);
-                        }
-                        int rows = stmt.executeUpdate();
-                        System.out.println("Cleared " + rows + " rows from " + table);
-                    }
-                }
+        try {
+            DataSource dataSource = QuartzConnectionService.createDataSource(
+                jdbcUrl, username, password, driver, schema);
                 
-                conn.commit();
+            QuartzDataService quartzDataService = new QuartzDataService(
+                dataSource, schema, tablePrefix, schedulerName);
+                
+            quartzDataService.clearTables();
+            
                 System.out.println("\nAll tables cleared successfully.");
-            } catch (SQLException e) {
-                conn.rollback();
-                throw e;
+        } catch (Exception e) {
+            System.out.println("Error clearing tables: " + e.getMessage());
+            if (verbose) {
+                e.printStackTrace();
             }
+            throw e;
         }
     }
     
@@ -769,150 +675,105 @@ public class QuartzCli implements Callable<Integer> {
         try {
             DataSource dataSource = QuartzConnectionService.createDataSource(
                 jdbcUrl, username, password, driver, schema);
-            
-            String tablePrefix = this.tablePrefix.toLowerCase();
-            String jobTableName = (schema != null && !schema.isEmpty()) ? 
-                schema + "." + tablePrefix + "job_details" : 
-                tablePrefix + "job_details";
-            
+                
+            QuartzDataService quartzDataService = new QuartzDataService(
+                dataSource, schema, tablePrefix, schedulerName);
+                
             // First check if we have multiple results
-            String countSql = "SELECT COUNT(*) as count FROM " + jobTableName + " " +
-                             "WHERE 1=1 " +
-                             (group != null ? "AND job_group LIKE ? " : "") +
-                             (name != null ? "AND job_name LIKE ? " : "") +
-                             (schedulerName != null ? "AND SCHED_NAME = ? " : "");
+            List<Map<String, Object>> jobs = quartzDataService.listJobs(group, name);
             
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement countStmt = conn.prepareStatement(countSql)) {
-                
-                int paramIndex = 1;
-                if (group != null) {
-                    countStmt.setString(paramIndex++, "%" + group + "%");
-                }
-                if (name != null) {
-                    countStmt.setString(paramIndex++, "%" + name + "%");
-                }
-                if (schedulerName != null) {
-                    countStmt.setString(paramIndex++, schedulerName);
-                }
-                
-                try (ResultSet countRs = countStmt.executeQuery()) {
-                    countRs.next();
-                    int count = countRs.getInt("count");
-                    
-                    if (count == 0) {
-                        System.out.println("No jobs found matching the criteria");
-                        return;
-                    }
-                    
-                    if (count > 1) {
-                        // Multiple results found, switch to list mode
-                        listJobsWithSQL(group, name);
-                        return;
-                    }
-                }
+            if (jobs.isEmpty()) {
+                System.out.println("No jobs found matching the criteria");
+                return;
             }
             
-            // Now get the single result
-            String sql = "SELECT * FROM " + jobTableName + " " +
-                         "WHERE 1=1 " +
-                         (group != null ? "AND job_group LIKE ? " : "") +
-                         (name != null ? "AND job_name LIKE ? " : "") +
-                         (schedulerName != null ? "AND SCHED_NAME = ? " : "");
+            if (jobs.size() > 1) {
+                // Multiple results found, switch to list mode
+                listJobsWithSQL(group, name);
+                return;
+            }
             
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql)) {
+            // Get the exact job name and group from the first result
+            String exactGroup = (String) jobs.get(0).get("group");
+            String exactName = (String) jobs.get(0).get("name");
+            
+            // Get detailed job information
+            Map<String, Object> jobDetails = quartzDataService.getJobDetails(exactGroup, exactName);
+            
+            // Display job details
+            if (jsonOutput) {
+                System.out.println("{");
+                System.out.println("  \"name\": \"" + jobDetails.get("name") + "\",");
+                System.out.println("  \"group\": \"" + jobDetails.get("group") + "\",");
+                System.out.println("  \"description\": \"" + jobDetails.get("description") + "\",");
+                System.out.println("  \"jobClass\": \"" + jobDetails.get("jobClass") + "\",");
+                System.out.println("  \"isDurable\": " + jobDetails.get("isDurable") + ",");
+                System.out.println("  \"isNonConcurrent\": " + jobDetails.get("isNonConcurrent") + ",");
+                System.out.println("  \"isUpdateData\": " + jobDetails.get("isUpdateData") + ",");
+                System.out.println("  \"requestsRecovery\": " + jobDetails.get("requestsRecovery") + ",");
+                System.out.println("  \"hasJobData\": " + jobDetails.get("hasJobData") + ",");
                 
-                int paramIndex = 1;
-                if (group != null) {
-                    stmt.setString(paramIndex++, "%" + group + "%");
+                // Print triggers
+                System.out.println("  \"triggers\": [");
+                List<Map<String, Object>> triggers = (List<Map<String, Object>>) jobDetails.get("triggers");
+                boolean first = true;
+                for (Map<String, Object> trigger : triggers) {
+                    if (!first) {
+                        System.out.println(",");
+                    }
+                    first = false;
+                    System.out.println("    {");
+                    System.out.println("      \"name\": \"" + trigger.get("name") + "\",");
+                    System.out.println("      \"group\": \"" + trigger.get("group") + "\",");
+                    System.out.println("      \"state\": \"" + trigger.get("state") + "\",");
+                    System.out.println("      \"type\": \"" + trigger.get("type") + "\",");
+                    System.out.println("      \"nextFireTime\": \"" + trigger.get("nextFireTime") + "\",");
+                    System.out.println("      \"prevFireTime\": \"" + trigger.get("prevFireTime") + "\",");
+                    System.out.println("      \"startTime\": \"" + trigger.get("startTime") + "\",");
+                    System.out.println("      \"endTime\": \"" + trigger.get("endTime") + "\"");
+                    System.out.print("    }");
                 }
-                if (name != null) {
-                    stmt.setString(paramIndex++, "%" + name + "%");
-                }
-                if (schedulerName != null) {
-                    stmt.setString(paramIndex++, schedulerName);
-                }
+                System.out.println("\n  ]");
+                System.out.println("}");
+            } else {
+                System.out.println("\nJob Details:");
+                System.out.println("  Name: " + jobDetails.get("name"));
+                System.out.println("  Group: " + jobDetails.get("group"));
+                System.out.println("  Description: " + jobDetails.get("description"));
+                System.out.println("  Job Class: " + jobDetails.get("jobClass"));
+                System.out.println("  Durable: " + jobDetails.get("isDurable"));
+                System.out.println("  Non-Concurrent: " + jobDetails.get("isNonConcurrent"));
+                System.out.println("  Update Data: " + jobDetails.get("isUpdateData"));
+                System.out.println("  Requests Recovery: " + jobDetails.get("requestsRecovery"));
+                System.out.println("  Has Job Data: " + jobDetails.get("hasJobData"));
                 
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (!rs.next()) {
-                        System.out.println("No jobs found matching the criteria");
-                        return;
+                // Print triggers
+                List<Map<String, Object>> triggers = (List<Map<String, Object>>) jobDetails.get("triggers");
+                System.out.println("\nAssociated Triggers (" + triggers.size() + "):");
+                
+                if (!triggers.isEmpty()) {
+                    Table table = Table.create("Triggers")
+                        .addColumns(
+                            StringColumn.create("Name"),
+                            StringColumn.create("Group"),
+                            StringColumn.create("Type"),
+                            StringColumn.create("State"),
+                            StringColumn.create("Next Fire"),
+                            StringColumn.create("Previous Fire")
+                        );
+                    
+                    for (Map<String, Object> trigger : triggers) {
+                        table.stringColumn("Name").append((String) trigger.get("name"));
+                        table.stringColumn("Group").append((String) trigger.get("group"));
+                        table.stringColumn("Type").append((String) trigger.get("type"));
+                        table.stringColumn("State").append((String) trigger.get("state"));
+                        table.stringColumn("Next Fire").append((String) trigger.get("nextFireTime"));
+                        table.stringColumn("Previous Fire").append((String) trigger.get("prevFireTime"));
                     }
                     
-                    String jobData = rs.getString("job_data");
-                    String decodedJobData = jobData;
-                    try {
-                        // First try Base64 decoding
-                        try {
-                            byte[] decodedBytes = java.util.Base64.getDecoder().decode(jobData);
-                            decodedJobData = new String(decodedBytes);
-                        } catch (IllegalArgumentException e) {
-                            // If not Base64, try hex decoding
-                            if (jobData.startsWith("\\x")) {
-                                jobData = jobData.substring(2); // Remove \x prefix
-                                byte[] bytes = new byte[jobData.length() / 2];
-                                for (int i = 0; i < bytes.length; i++) {
-                                    bytes[i] = (byte) Integer.parseInt(jobData.substring(2 * i, 2 * i + 2), 16);
-                                }
-                                decodedJobData = new String(bytes);
-                            }
-                        }
-                    } catch (Exception e) {
-                        // If decoding fails, use original data
-                        if (verbose) {
-                            System.out.println("Warning: Could not decode job data: " + e.getMessage());
-                        }
-                    }
-                    
-                    if (jsonOutput) {
-                        System.out.println("{");
-                        System.out.println("  \"group\": \"" + rs.getString("job_group") + "\",");
-                        System.out.println("  \"name\": \"" + rs.getString("job_name") + "\",");
-                        System.out.println("  \"description\": \"" + rs.getString("description") + "\",");
-                        System.out.println("  \"jobClass\": \"" + rs.getString("job_class_name") + "\",");
-                        System.out.println("  \"isDurable\": " + rs.getBoolean("is_durable") + ",");
-                        System.out.println("  \"isNonConcurrent\": " + rs.getBoolean("is_nonconcurrent") + ",");
-                        System.out.println("  \"isUpdateData\": " + rs.getBoolean("is_update_data") + ",");
-                        System.out.println("  \"requestsRecovery\": " + rs.getBoolean("requests_recovery") + ",");
-                        System.out.println("  \"jobData\": \"" + decodedJobData + "\"");
-                        System.out.println("}");
-                    } else {
-                        Table table = Table.create("Job Details")
-                            .addColumns(
-                                StringColumn.create("Property"),
-                                StringColumn.create("Value")
-                            );
-                        
-                        table.stringColumn("Property").append("Group");
-                        table.stringColumn("Value").append(rs.getString("job_group"));
-                        
-                        table.stringColumn("Property").append("Name");
-                        table.stringColumn("Value").append(rs.getString("job_name"));
-                        
-                        table.stringColumn("Property").append("Description");
-                        table.stringColumn("Value").append(rs.getString("description"));
-                        
-                        table.stringColumn("Property").append("Job Class");
-                        table.stringColumn("Value").append(rs.getString("job_class_name"));
-                        
-                        table.stringColumn("Property").append("Is Durable");
-                        table.stringColumn("Value").append(String.valueOf(rs.getBoolean("is_durable")));
-                        
-                        table.stringColumn("Property").append("Is Non-Concurrent");
-                        table.stringColumn("Value").append(String.valueOf(rs.getBoolean("is_nonconcurrent")));
-                        
-                        table.stringColumn("Property").append("Is Update Data");
-                        table.stringColumn("Value").append(String.valueOf(rs.getBoolean("is_update_data")));
-                        
-                        table.stringColumn("Property").append("Requests Recovery");
-                        table.stringColumn("Value").append(String.valueOf(rs.getBoolean("requests_recovery")));
-                        
-                        table.stringColumn("Property").append("Job Data");
-                        table.stringColumn("Value").append(decodedJobData);
-                        
-                        System.out.println(TableFormatter.formatTable(table));
-                    }
+                    System.out.println(TableFormatter.formatTable(table));
+                } else {
+                    System.out.println("  No triggers associated with this job");
                 }
             }
         } catch (Exception e) {
@@ -931,135 +792,82 @@ public class QuartzCli implements Callable<Integer> {
         try {
             DataSource dataSource = QuartzConnectionService.createDataSource(
                 jdbcUrl, username, password, driver, schema);
-            
-            String tablePrefix = this.tablePrefix.toLowerCase();
-            String triggerTableName = (schema != null && !schema.isEmpty()) ? 
-                schema + "." + tablePrefix + "triggers" : 
-                tablePrefix + "triggers";
-            
-            String sql = "SELECT t.*, " +
-                         "CASE t.trigger_type " +
-                         "  WHEN 'CRON' THEN (SELECT CAST(cron_expression AS text) FROM " + tablePrefix + "cron_triggers WHERE trigger_name = t.trigger_name AND trigger_group = t.trigger_group) " +
-                         "  WHEN 'SIMPLE' THEN (SELECT CAST(repeat_interval AS text) FROM " + tablePrefix + "simple_triggers WHERE trigger_name = t.trigger_name AND trigger_group = t.trigger_group) " +
-                         "END as schedule_info " +
-                         "FROM " + triggerTableName + " t " +
-                         "WHERE 1=1 " +
-                         (group != null ? "AND t.trigger_group LIKE ? " : "") +
-                         (name != null ? "AND t.trigger_name LIKE ? " : "") +
-                         (schedulerName != null ? "AND t.SCHED_NAME = ? " : "");
-            
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql)) {
                 
-                int paramIndex = 1;
-                if (group != null) {
-                    stmt.setString(paramIndex++, "%" + group + "%");
-                }
-                if (name != null) {
-                    stmt.setString(paramIndex++, "%" + name + "%");
-                }
-                if (schedulerName != null) {
-                    stmt.setString(paramIndex++, schedulerName);
+            QuartzDataService quartzDataService = new QuartzDataService(
+                dataSource, schema, tablePrefix, schedulerName);
+                
+            // First check if we have multiple results
+            List<Map<String, Object>> triggers = quartzDataService.listTriggers(group, name);
+            
+            if (triggers.isEmpty()) {
+                System.out.println("No triggers found matching the criteria");
+                return;
+            }
+            
+            if (triggers.size() > 1) {
+                // Multiple results found, switch to list mode
+                listTriggersWithSQL(group, name);
+                return;
+            }
+            
+            // Get the exact trigger name and group from the first result
+            String exactGroup = (String) triggers.get(0).get("group");
+            String exactName = (String) triggers.get(0).get("name");
+            
+            // Get detailed trigger information
+            Map<String, Object> triggerDetails = quartzDataService.getTriggerDetails(exactGroup, exactName);
+            
+            // Display trigger details
+            if (jsonOutput) {
+                System.out.println("{");
+                System.out.println("  \"name\": \"" + triggerDetails.get("name") + "\",");
+                System.out.println("  \"group\": \"" + triggerDetails.get("group") + "\",");
+                System.out.println("  \"jobName\": \"" + triggerDetails.get("jobName") + "\",");
+                System.out.println("  \"jobGroup\": \"" + triggerDetails.get("jobGroup") + "\",");
+                System.out.println("  \"description\": \"" + triggerDetails.get("description") + "\",");
+                System.out.println("  \"type\": \"" + triggerDetails.get("type") + "\",");
+                System.out.println("  \"state\": \"" + triggerDetails.get("state") + "\",");
+                System.out.println("  \"startTime\": \"" + triggerDetails.get("startTime") + "\",");
+                System.out.println("  \"endTime\": \"" + triggerDetails.get("endTime") + "\",");
+                System.out.println("  \"nextFireTime\": \"" + triggerDetails.get("nextFireTime") + "\",");
+                System.out.println("  \"prevFireTime\": \"" + triggerDetails.get("prevFireTime") + "\",");
+                System.out.println("  \"priority\": " + triggerDetails.get("priority") + ",");
+                System.out.println("  \"misfireInstr\": " + triggerDetails.get("misfireInstr") + ",");
+                
+                // Add type-specific details
+                if ("CRON".equals(triggerDetails.get("type"))) {
+                    System.out.println("  \"cronExpression\": \"" + triggerDetails.get("cronExpression") + "\",");
+                    System.out.println("  \"timeZoneId\": \"" + triggerDetails.get("timeZoneId") + "\"");
+                } else if ("SIMPLE".equals(triggerDetails.get("type"))) {
+                    System.out.println("  \"repeatCount\": " + triggerDetails.get("repeatCount") + ",");
+                    System.out.println("  \"repeatInterval\": " + triggerDetails.get("repeatInterval") + ",");
+                    System.out.println("  \"timesTriggered\": " + triggerDetails.get("timesTriggered") + "");
                 }
                 
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (!rs.next()) {
-                        System.out.println("No triggers found matching the criteria");
-                        return;
-                    }
-                    
-                    // If we have more than one result, switch to list mode
-                    if (rs.next()) {
-                        rs.previous(); // Go back to first row
-                        listTriggersWithSQL(group, name);
-                        return;
-                    }
-                    
-                    // Single result, show detailed view
-                    rs.first();
-                    if (jsonOutput) {
-                        System.out.println("{");
-                        System.out.println("  \"group\": \"" + rs.getString("trigger_group") + "\",");
-                        System.out.println("  \"name\": \"" + rs.getString("trigger_name") + "\",");
-                        System.out.println("  \"jobGroup\": \"" + rs.getString("job_group") + "\",");
-                        System.out.println("  \"jobName\": \"" + rs.getString("job_name") + "\",");
-                        System.out.println("  \"description\": \"" + rs.getString("description") + "\",");
-                        System.out.println("  \"nextFireTime\": " + rs.getLong("next_fire_time") + ",");
-                        System.out.println("  \"prevFireTime\": " + rs.getLong("prev_fire_time") + ",");
-                        System.out.println("  \"priority\": " + rs.getInt("priority") + ",");
-                        System.out.println("  \"triggerState\": \"" + rs.getString("trigger_state") + "\",");
-                        System.out.println("  \"triggerType\": \"" + rs.getString("trigger_type") + "\",");
-                        System.out.println("  \"startTime\": " + rs.getLong("start_time") + ",");
-                        System.out.println("  \"endTime\": " + rs.getLong("end_time") + ",");
-                        System.out.println("  \"calendarName\": \"" + rs.getString("calendar_name") + "\",");
-                        System.out.println("  \"misfireInstruction\": " + rs.getInt("misfire_instr") + ",");
-                        System.out.println("  \"jobData\": \"" + rs.getString("job_data") + "\",");
-                        System.out.println("  \"scheduleInfo\": \"" + rs.getString("schedule_info") + "\"");
-                        System.out.println("}");
-                    } else {
-                        Table table = Table.create("Trigger Details")
-                            .addColumns(
-                                StringColumn.create("Property"),
-                                StringColumn.create("Value")
-                            );
-                        
-                        table.stringColumn("Property").append("Group");
-                        table.stringColumn("Value").append(rs.getString("trigger_group"));
-                        
-                        table.stringColumn("Property").append("Name");
-                        table.stringColumn("Value").append(rs.getString("trigger_name"));
-                        
-                        table.stringColumn("Property").append("Job Group");
-                        table.stringColumn("Value").append(rs.getString("job_group"));
-                        
-                        table.stringColumn("Property").append("Job Name");
-                        table.stringColumn("Value").append(rs.getString("job_name"));
-                        
-                        table.stringColumn("Property").append("Description");
-                        table.stringColumn("Value").append(rs.getString("description"));
-                        
-                        table.stringColumn("Property").append("Next Fire Time");
-                        table.stringColumn("Value").append(formatRelativeTime(rs.getLong("next_fire_time")));
-                        
-                        table.stringColumn("Property").append("Previous Fire Time");
-                        table.stringColumn("Value").append(formatRelativeTime(rs.getLong("prev_fire_time")));
-                        
-                        table.stringColumn("Property").append("Priority");
-                        table.stringColumn("Value").append(String.valueOf(rs.getInt("priority")));
-                        
-                        table.stringColumn("Property").append("State");
-                        table.stringColumn("Value").append(rs.getString("trigger_state"));
-                        
-                        table.stringColumn("Property").append("Type");
-                        table.stringColumn("Value").append(rs.getString("trigger_type"));
-                        
-                        table.stringColumn("Property").append("Start Time");
-                        table.stringColumn("Value").append(formatRelativeTime(rs.getLong("start_time")));
-                        
-                        table.stringColumn("Property").append("End Time");
-                        table.stringColumn("Value").append(formatRelativeTime(rs.getLong("end_time")));
-                        
-                        table.stringColumn("Property").append("Calendar Name");
-                        table.stringColumn("Value").append(rs.getString("calendar_name"));
-                        
-                        table.stringColumn("Property").append("Misfire Instruction");
-                        table.stringColumn("Value").append(String.valueOf(rs.getInt("misfire_instr")));
-                        
-                        table.stringColumn("Property").append("Job Data");
-                        String jobData = rs.getString("job_data");
-                        try {
-                            byte[] decodedBytes = java.util.Base64.getDecoder().decode(jobData);
-                            jobData = new String(decodedBytes);
-                        } catch (IllegalArgumentException e) {
-                            // Not a Base64-encoded string, use original
-                        }
-                        table.stringColumn("Value").append(jobData);
-                        
-                        table.stringColumn("Property").append("Schedule Info");
-                        table.stringColumn("Value").append(rs.getString("schedule_info"));
-                        
-                        System.out.println(TableFormatter.formatTable(table));
-                    }
+                System.out.println("}");
+            } else {
+                System.out.println("\nTrigger Details:");
+                System.out.println("  Name: " + triggerDetails.get("name"));
+                System.out.println("  Group: " + triggerDetails.get("group"));
+                System.out.println("  Job: " + triggerDetails.get("jobGroup") + "." + triggerDetails.get("jobName"));
+                System.out.println("  Description: " + triggerDetails.get("description"));
+                System.out.println("  Type: " + triggerDetails.get("type"));
+                System.out.println("  State: " + triggerDetails.get("state"));
+                System.out.println("  Start Time: " + triggerDetails.get("startTime"));
+                System.out.println("  End Time: " + triggerDetails.get("endTime"));
+                System.out.println("  Next Fire Time: " + triggerDetails.get("nextFireTime"));
+                System.out.println("  Previous Fire Time: " + triggerDetails.get("prevFireTime"));
+                System.out.println("  Priority: " + triggerDetails.get("priority"));
+                System.out.println("  Misfire Instruction: " + triggerDetails.get("misfireInstr"));
+                
+                // Add type-specific details
+                if ("CRON".equals(triggerDetails.get("type"))) {
+                    System.out.println("  Cron Expression: " + triggerDetails.get("cronExpression"));
+                    System.out.println("  Time Zone: " + triggerDetails.get("timeZoneId"));
+                } else if ("SIMPLE".equals(triggerDetails.get("type"))) {
+                    System.out.println("  Repeat Count: " + triggerDetails.get("repeatCount"));
+                    System.out.println("  Repeat Interval: " + triggerDetails.get("repeatInterval") + " ms");
+                    System.out.println("  Times Triggered: " + triggerDetails.get("timesTriggered"));
                 }
             }
         } catch (Exception e) {
@@ -1078,83 +886,65 @@ public class QuartzCli implements Callable<Integer> {
         try {
             DataSource dataSource = QuartzConnectionService.createDataSource(
                 jdbcUrl, username, password, driver, schema);
-            
-            String tablePrefix = this.tablePrefix.toLowerCase();
-            String jobTableName = (schema != null && !schema.isEmpty()) ? 
-                schema + "." + tablePrefix + "job_details" : 
-                tablePrefix + "job_details";
-            
-            String sql = "SELECT job_group, job_name FROM " + jobTableName + " " +
-                         "WHERE 1=1 " +
-                         (group != null ? "AND job_group LIKE ? " : "") +
-                         (name != null ? "AND job_name LIKE ? " : "") +
-                         (schedulerName != null ? "AND SCHED_NAME = ? " : "");
-            
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql)) {
                 
-                int paramIndex = 1;
-                if (group != null) {
-                    stmt.setString(paramIndex++, "%" + group + "%");
-                }
-                if (name != null) {
-                    stmt.setString(paramIndex++, "%" + name + "%");
-                }
-                if (schedulerName != null) {
-                    stmt.setString(paramIndex++, schedulerName);
-                }
+            QuartzDataService quartzDataService = new QuartzDataService(
+                dataSource, schema, tablePrefix, schedulerName);
                 
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (!rs.next()) {
-                        System.out.println("No jobs found matching the criteria");
+            // First check if we have multiple results
+            List<Map<String, Object>> jobs = quartzDataService.listJobs(group, name);
+            
+            if (jobs.isEmpty()) {
+                System.out.println("No jobs found matching the criteria");
+                return;
+            }
+            
+            // If we have more than one result, list them and ask for confirmation
+            if (jobs.size() > 1) {
+                System.out.println("\nMultiple jobs found matching the criteria:");
+                listJobsWithSQL(group, name);
+                
+                if (!forceClear) {
+                    System.out.println("\nWARNING: This will delete ALL matching jobs and their triggers!");
+                    System.out.println("This operation cannot be undone.");
+                    System.out.print("Are you sure you want to continue? (y/N): ");
+                    
+                    Scanner scanner = new Scanner(System.in);
+                    String response = scanner.nextLine().trim().toLowerCase();
+                    if (!response.equals("y")) {
+                        System.out.println("Operation cancelled.");
                         return;
                     }
+                }
+            } else {
+                // Single job, confirm deletion
+                String exactGroup = (String) jobs.get(0).get("group");
+                String exactName = (String) jobs.get(0).get("name");
+                
+                if (!forceClear) {
+                    System.out.println("\nWARNING: This will delete the job " + exactGroup + "." + exactName + " and its triggers!");
+                    System.out.println("This operation cannot be undone.");
+                    System.out.print("Are you sure you want to continue? (y/N): ");
                     
-                    // If we have more than one result, list them and ask for confirmation
-                    if (rs.next()) {
-                        rs.previous(); // Go back to first row
-                        System.out.println("\nMultiple jobs found matching the criteria:");
-                        listJobsWithSQL(group, name);
-                        
-                        if (!forceClear) {
-                            System.out.println("\nWARNING: This will delete ALL matching jobs and their triggers!");
-                            System.out.println("This operation cannot be undone.");
-                            System.out.print("Are you sure you want to continue? (y/N): ");
-                            
-                            Scanner scanner = new Scanner(System.in);
-                            String response = scanner.nextLine().trim().toLowerCase();
-                            if (!response.equals("y")) {
-                                System.out.println("Operation cancelled.");
-                                return;
-                            }
-                        }
+                    Scanner scanner = new Scanner(System.in);
+                    String response = scanner.nextLine().trim().toLowerCase();
+                    if (!response.equals("y")) {
+                        System.out.println("Operation cancelled.");
+                        return;
                     }
                 }
+                
+                // Set exact group and name for deletion
+                group = exactGroup;
+                name = exactName;
             }
             
             // Now perform the deletion
-            String deleteSql = "DELETE FROM " + jobTableName + " " +
-                              "WHERE 1=1 " +
-                              (group != null ? "AND job_group LIKE ? " : "") +
-                              (name != null ? "AND job_name LIKE ? " : "") +
-                              (schedulerName != null ? "AND SCHED_NAME = ? " : "");
+            boolean success = quartzDataService.deleteJob(group, name);
             
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(deleteSql)) {
-                
-                int paramIndex = 1;
-                if (group != null) {
-                    stmt.setString(paramIndex++, "%" + group + "%");
-                }
-                if (name != null) {
-                    stmt.setString(paramIndex++, "%" + name + "%");
-                }
-                if (schedulerName != null) {
-                    stmt.setString(paramIndex++, schedulerName);
-                }
-                
-                int rows = stmt.executeUpdate();
-                System.out.println("Successfully deleted " + rows + " jobs");
+            if (success) {
+                System.out.println("Successfully deleted job(s)");
+            } else {
+                System.out.println("Failed to delete job(s)");
             }
         } catch (Exception e) {
             System.out.println("Error deleting job: " + e.getMessage());
