@@ -21,7 +21,7 @@ import java.time.ZoneId;
 /**
  * Command-line interface for Quartz Scheduler
  */
-@Command(name = "quartz-repl", 
+@Command(name = "quartz-cli",
          description = "Quartz Database CLI Tool",
          mixinStandardHelpOptions = true,
          version = "1.0")
