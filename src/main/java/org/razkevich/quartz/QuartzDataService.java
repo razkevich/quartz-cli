@@ -359,9 +359,12 @@ public class QuartzDataService {
             
             // Get associated triggers
             if (jobDetails.containsKey("name") && jobDetails.containsKey("group")) {
+                // Get the scheduler name from the job details
+                String jobSchedulerName = (String) jobDetails.get("schedulerName");
+                
                 String triggerSql = "SELECT * FROM " + triggerTableName + " " +
                                    "WHERE job_name = ? AND job_group = ? " +
-                                   (schedulerName != null ? "AND SCHED_NAME = ? " : "") +
+                                   "AND SCHED_NAME = ? " +
                                    "ORDER BY next_fire_time";
                 
                 List<Map<String, Object>> triggers = new ArrayList<>();
@@ -371,9 +374,7 @@ public class QuartzDataService {
                     
                     stmt.setString(1, (String) jobDetails.get("name"));
                     stmt.setString(2, (String) jobDetails.get("group"));
-                    if (schedulerName != null) {
-                        stmt.setString(3, schedulerName);
-                    }
+                    stmt.setString(3, jobSchedulerName);
                     
                     try (ResultSet rs = stmt.executeQuery()) {
                         while (rs.next()) {
