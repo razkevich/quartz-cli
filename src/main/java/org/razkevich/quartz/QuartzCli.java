@@ -4,6 +4,7 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
+import java.util.Date;
 
 import java.util.concurrent.Callable;
 import java.sql.Connection;
@@ -584,7 +585,7 @@ public class QuartzCli implements Callable<Integer> {
                 dataSource, schema, tablePrefix, schedulerName);
                 
             List<Map<String, Object>> schedulers = quartzDataService.listSchedulers();
-            
+            schedulers.sort((s1, s2) -> ((Date) s2.get("lastCheckinTime")).compareTo((Date) s1.get("lastCheckinTime")));
             if (jsonOutput) {
                 System.out.println("[");
                 boolean first = true;
@@ -749,6 +750,8 @@ public class QuartzCli implements Callable<Integer> {
                 
                 // Print triggers
                 List<Map<String, Object>> triggers = (List<Map<String, Object>>) jobDetails.get("triggers");
+                triggers.sort((t1, t2) -> ((Date) t2.get("nextFireTime")).compareTo((Date) t1.get("nextFireTime")));
+                // Print triggers
                 System.out.println("\nAssociated Triggers (" + triggers.size() + "):");
                 
                 if (!triggers.isEmpty()) {
@@ -886,10 +889,10 @@ public class QuartzCli implements Callable<Integer> {
         try {
             DataSource dataSource = QuartzConnectionService.createDataSource(
                 jdbcUrl, username, password, driver, schema);
-                
+
             QuartzDataService quartzDataService = new QuartzDataService(
                 dataSource, schema, tablePrefix, schedulerName);
-                
+
             // First check if we have multiple results
             List<Map<String, Object>> jobs = quartzDataService.listJobs(group, name);
             
@@ -897,17 +900,17 @@ public class QuartzCli implements Callable<Integer> {
                 System.out.println("No jobs found matching the criteria");
                 return;
             }
-            
+
             // If we have more than one result, list them and ask for confirmation
             if (jobs.size() > 1) {
                 System.out.println("\nMultiple jobs found matching the criteria:");
                 listJobsWithSQL(group, name);
-                
+
                 if (!forceClear) {
                     System.out.println("\nWARNING: This will delete ALL matching jobs and their triggers!");
                     System.out.println("This operation cannot be undone.");
                     System.out.print("Are you sure you want to continue? (y/N): ");
-                    
+
                     Scanner scanner = new Scanner(System.in);
                     String response = scanner.nextLine().trim().toLowerCase();
                     if (!response.equals("y")) {
@@ -919,12 +922,12 @@ public class QuartzCli implements Callable<Integer> {
                 // Single job, confirm deletion
                 String exactGroup = (String) jobs.get(0).get("group");
                 String exactName = (String) jobs.get(0).get("name");
-                
+
                 if (!forceClear) {
                     System.out.println("\nWARNING: This will delete the job " + exactGroup + "." + exactName + " and its triggers!");
                     System.out.println("This operation cannot be undone.");
                     System.out.print("Are you sure you want to continue? (y/N): ");
-                    
+
                     Scanner scanner = new Scanner(System.in);
                     String response = scanner.nextLine().trim().toLowerCase();
                     if (!response.equals("y")) {
@@ -932,7 +935,7 @@ public class QuartzCli implements Callable<Integer> {
                         return;
                     }
                 }
-                
+
                 // Set exact group and name for deletion
                 group = exactGroup;
                 name = exactName;
@@ -1052,4 +1055,4 @@ public class QuartzCli implements Callable<Integer> {
         int exitCode = new CommandLine(new QuartzCli()).execute(args);
         System.exit(exitCode);
     }
-} 
+}
