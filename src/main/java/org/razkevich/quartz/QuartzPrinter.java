@@ -2,7 +2,6 @@ package org.razkevich.quartz;
 
 import org.quartz.*;
 import org.quartz.impl.matchers.GroupMatcher;
-
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -13,8 +12,6 @@ import java.util.Set;
  */
 public class QuartzPrinter {
     
-    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-    
     /**
      * Print scheduler info
      */
@@ -24,7 +21,7 @@ public class QuartzPrinter {
         System.out.println("Name: " + scheduler.getSchedulerName());
         System.out.println("Instance ID: " + scheduler.getSchedulerInstanceId());
         System.out.println("Version: " + scheduler.getMetaData().getVersion());
-        System.out.println("Running Since: " + formatDate(scheduler.getMetaData().getRunningSince()));
+        System.out.println("Running Since: " + DateTimeUtils.formatDate(scheduler.getMetaData().getRunningSince()));
         String state = scheduler.isInStandbyMode() ? "PAUSED" : 
                      (scheduler.isStarted() ? "STARTED" : "STOPPED");
         System.out.println("State: " + state);
@@ -34,14 +31,4 @@ public class QuartzPrinter {
         System.out.println("Persistent: " + scheduler.getMetaData().isJobStoreSupportsPersistence());
         System.out.println();
     }
-    
-    /**
-     * Format a date in a standard format
-     */
-    private static String formatDate(Date date) {
-        if (date == null) {
-            return "null";
-        }
-        return DATE_FORMAT.format(date);
-    }
-} 
+}

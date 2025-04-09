@@ -167,4 +167,4 @@ public class TableFormatter {
             return 80; // Default fallback
         }
     }
-} 
+}

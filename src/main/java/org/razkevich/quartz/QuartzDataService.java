@@ -5,9 +5,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.ResultSet;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -45,13 +42,11 @@ public class QuartzDataService {
     
     /**
      * Format a timestamp in milliseconds to a readable date/time string
+     * @deprecated Use DateTimeUtils.formatTimestamp instead
      */
+    @Deprecated
     public String formatTimestamp(long timestamp) {
-        if (timestamp <= 0) {
-            return "N/A";
-        }
-        return LocalDateTime.ofInstant(
-            Instant.ofEpochMilli(timestamp), ZoneId.systemDefault()).toString();
+        return DateTimeUtils.formatTimestamp(timestamp);
     }
     
     /**

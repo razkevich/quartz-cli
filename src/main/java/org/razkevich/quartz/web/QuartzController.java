@@ -55,7 +55,7 @@ public class QuartzController {
             @RequestParam(defaultValue = "10") int size) {
         // Server-side filtering is applied by passing filter parameters directly to the service
         List<Map<String, Object>> allJobs = quartzDataService.listJobs(group, name);
-        return ResponseEntity.ok(paginateResults(allJobs, page, size));
+        return ResponseEntity.ok(PaginationUtils.paginateResults(allJobs, page, size));
     }
 
     /**
@@ -75,7 +75,7 @@ public class QuartzController {
             @RequestParam(defaultValue = "10") int size) {
         // Server-side filtering is applied by passing filter parameters directly to the service
         List<Map<String, Object>> allTriggers = quartzDataService.listTriggers(group, name);
-        return ResponseEntity.ok(paginateResults(allTriggers, page, size));
+        return ResponseEntity.ok(PaginationUtils.paginateResults(allTriggers, page, size));
     }
 
     /**
@@ -95,7 +95,7 @@ public class QuartzController {
             @RequestParam(defaultValue = "10") int size) {
         // Server-side filtering is applied by passing filter parameters directly to the service
         List<Map<String, Object>> allRunningJobs = quartzDataService.listRunningJobs(group, name);
-        return ResponseEntity.ok(paginateResults(allRunningJobs, page, size));
+        return ResponseEntity.ok(PaginationUtils.paginateResults(allRunningJobs, page, size));
     }
 
     /**
@@ -113,7 +113,7 @@ public class QuartzController {
             @RequestParam(defaultValue = "10") int size) {
         // Server-side filtering is applied by passing filter parameters directly to the service
         List<Map<String, Object>> allPausedGroups = quartzDataService.listPausedTriggerGroups(group);
-        return ResponseEntity.ok(paginateResults(allPausedGroups, page, size));
+        return ResponseEntity.ok(PaginationUtils.paginateResults(allPausedGroups, page, size));
     }
 
     /**
@@ -128,7 +128,7 @@ public class QuartzController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         List<Map<String, Object>> allSchedulers = quartzDataService.listSchedulers();
-        return ResponseEntity.ok(paginateResults(allSchedulers, page, size));
+        return ResponseEntity.ok(PaginationUtils.paginateResults(allSchedulers, page, size));
     }
 
     /**
@@ -227,33 +227,5 @@ public class QuartzController {
         return ResponseEntity.ok(info);
     }
     
-    /**
-     * Helper method to paginate results
-     * This is applied after server-side filtering has been performed
-     */
-    private Map<String, Object> paginateResults(List<Map<String, Object>> allItems, int page, int size) {
-        Map<String, Object> result = new HashMap<>();
-        int totalItems = allItems.size();
-        int totalPages = (int) Math.ceil((double) totalItems / size);
-        
-        // Ensure page is within bounds
-        page = Math.max(0, Math.min(page, totalPages - 1));
-        
-        // Calculate start and end indices
-        int startIndex = page * size;
-        int endIndex = Math.min(startIndex + size, totalItems);
-        
-        // Get the items for the current page
-        List<Map<String, Object>> items = (startIndex < totalItems) ?
-                allItems.subList(startIndex, endIndex) : new ArrayList<>();
-        
-        // Build the result
-        result.put("content", items);
-        result.put("totalItems", totalItems);
-        result.put("totalPages", totalPages);
-        result.put("currentPage", page);
-        result.put("pageSize", size);
-        
-        return result;
-    }
+    // Pagination is now handled by PaginationUtils
 }
