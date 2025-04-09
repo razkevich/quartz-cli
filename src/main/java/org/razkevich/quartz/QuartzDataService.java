@@ -572,34 +572,186 @@ public class QuartzDataService {
     }
     
     /**
-     * Delete a job and its triggers
+     * Delete a job and its triggers with cascade deletion
+     * This method deletes all related records in the following order:
+     * 1. Fired triggers related to the job
+     * 2. Simple triggers related to the job
+     * 3. Cron triggers related to the job
+     * 4. Blob triggers related to the job
+     * 5. Simprop triggers related to the job
+     * 6. Triggers related to the job
+     * 7. The job itself
      */
     public boolean deleteJob(String group, String name) {
         try {
-            String jobTableName = getTableName("job_details");
-
-            String sql = "DELETE FROM " + jobTableName + " " +
-                         "WHERE 1=1 " +
-                         (group != null ? "AND job_group = ? " : "") +
-                         (name != null ? "AND job_name = ? " : "") +
-                         (schedulerName != null ? "AND SCHED_NAME = ? " : "");
-
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql)) {
+            try (Connection conn = dataSource.getConnection()) {
+                // Start transaction to ensure all or nothing deletion
+                conn.setAutoCommit(false);
                 
-                int paramIndex = 1;
-                if (group != null) {
-                    stmt.setString(paramIndex++, group);
+                try {
+                    // Get the scheduler name if not provided
+                    String effectiveSchedulerName = schedulerName;
+                    if (effectiveSchedulerName == null) {
+                        String jobTableName = getTableName("job_details");
+                        String schedulerSql = "SELECT SCHED_NAME FROM " + jobTableName + " " +
+                                            "WHERE job_group = ? AND job_name = ? LIMIT 1";
+                        
+                        try (PreparedStatement schedulerStmt = conn.prepareStatement(schedulerSql)) {
+                            schedulerStmt.setString(1, group);
+                            schedulerStmt.setString(2, name);
+                            try (ResultSet rs = schedulerStmt.executeQuery()) {
+                                if (rs.next()) {
+                                    effectiveSchedulerName = rs.getString("SCHED_NAME");
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 1. Delete fired triggers related to the job
+                    String firedTriggersTableName = getTableName("fired_triggers");
+                    String firedTriggersSql = "DELETE FROM " + firedTriggersTableName + " " +
+                                            "WHERE job_group = ? AND job_name = ? " +
+                                            (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                    
+                    try (PreparedStatement stmt = conn.prepareStatement(firedTriggersSql)) {
+                        stmt.setString(1, group);
+                        stmt.setString(2, name);
+                        if (effectiveSchedulerName != null) {
+                            stmt.setString(3, effectiveSchedulerName);
+                        }
+                        stmt.executeUpdate();
+                    }
+                    
+                    // Get all triggers related to this job
+                    String triggerTableName = getTableName("triggers");
+                    String getTriggersSql = "SELECT trigger_name, trigger_group FROM " + triggerTableName + " " +
+                                          "WHERE job_group = ? AND job_name = ? " +
+                                          (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                    
+                    List<Map<String, String>> relatedTriggers = new ArrayList<>();
+                    try (PreparedStatement stmt = conn.prepareStatement(getTriggersSql)) {
+                        stmt.setString(1, group);
+                        stmt.setString(2, name);
+                        if (effectiveSchedulerName != null) {
+                            stmt.setString(3, effectiveSchedulerName);
+                        }
+                        
+                        try (ResultSet rs = stmt.executeQuery()) {
+                            while (rs.next()) {
+                                Map<String, String> trigger = new HashMap<>();
+                                trigger.put("name", rs.getString("trigger_name"));
+                                trigger.put("group", rs.getString("trigger_group"));
+                                relatedTriggers.add(trigger);
+                            }
+                        }
+                    }
+                    
+                    // 2. Delete simple triggers related to the job
+                    for (Map<String, String> trigger : relatedTriggers) {
+                        String simpleTriggerTableName = getTableName("simple_triggers");
+                        String simpleTriggerSql = "DELETE FROM " + simpleTriggerTableName + " " +
+                                               "WHERE trigger_name = ? AND trigger_group = ? " +
+                                               (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                        
+                        try (PreparedStatement stmt = conn.prepareStatement(simpleTriggerSql)) {
+                            stmt.setString(1, trigger.get("name"));
+                            stmt.setString(2, trigger.get("group"));
+                            if (effectiveSchedulerName != null) {
+                                stmt.setString(3, effectiveSchedulerName);
+                            }
+                            stmt.executeUpdate();
+                        }
+                    }
+                    
+                    // 3. Delete cron triggers related to the job
+                    for (Map<String, String> trigger : relatedTriggers) {
+                        String cronTriggerTableName = getTableName("cron_triggers");
+                        String cronTriggerSql = "DELETE FROM " + cronTriggerTableName + " " +
+                                             "WHERE trigger_name = ? AND trigger_group = ? " +
+                                             (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                        
+                        try (PreparedStatement stmt = conn.prepareStatement(cronTriggerSql)) {
+                            stmt.setString(1, trigger.get("name"));
+                            stmt.setString(2, trigger.get("group"));
+                            if (effectiveSchedulerName != null) {
+                                stmt.setString(3, effectiveSchedulerName);
+                            }
+                            stmt.executeUpdate();
+                        }
+                    }
+                    
+                    // 4. Delete blob triggers related to the job
+                    for (Map<String, String> trigger : relatedTriggers) {
+                        String blobTriggerTableName = getTableName("blob_triggers");
+                        String blobTriggerSql = "DELETE FROM " + blobTriggerTableName + " " +
+                                             "WHERE trigger_name = ? AND trigger_group = ? " +
+                                             (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                        
+                        try (PreparedStatement stmt = conn.prepareStatement(blobTriggerSql)) {
+                            stmt.setString(1, trigger.get("name"));
+                            stmt.setString(2, trigger.get("group"));
+                            if (effectiveSchedulerName != null) {
+                                stmt.setString(3, effectiveSchedulerName);
+                            }
+                            stmt.executeUpdate();
+                        }
+                    }
+                    
+                    // 5. Delete simprop triggers related to the job
+                    for (Map<String, String> trigger : relatedTriggers) {
+                        String simpropTriggerTableName = getTableName("simprop_triggers");
+                        String simpropTriggerSql = "DELETE FROM " + simpropTriggerTableName + " " +
+                                                "WHERE trigger_name = ? AND trigger_group = ? " +
+                                                (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                        
+                        try (PreparedStatement stmt = conn.prepareStatement(simpropTriggerSql)) {
+                            stmt.setString(1, trigger.get("name"));
+                            stmt.setString(2, trigger.get("group"));
+                            if (effectiveSchedulerName != null) {
+                                stmt.setString(3, effectiveSchedulerName);
+                            }
+                            stmt.executeUpdate();
+                        }
+                    }
+                    
+                    // 6. Delete triggers related to the job
+                    String triggerSql = "DELETE FROM " + triggerTableName + " " +
+                                      "WHERE job_name = ? AND job_group = ? " +
+                                      (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                    
+                    try (PreparedStatement stmt = conn.prepareStatement(triggerSql)) {
+                        stmt.setString(1, name);
+                        stmt.setString(2, group);
+                        if (effectiveSchedulerName != null) {
+                            stmt.setString(3, effectiveSchedulerName);
+                        }
+                        stmt.executeUpdate();
+                    }
+                    
+                    // 7. Finally delete the job itself
+                    String jobTableName = getTableName("job_details");
+                    String jobSql = "DELETE FROM " + jobTableName + " " +
+                                  "WHERE job_group = ? AND job_name = ? " +
+                                  (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                    
+                    try (PreparedStatement stmt = conn.prepareStatement(jobSql)) {
+                        stmt.setString(1, group);
+                        stmt.setString(2, name);
+                        if (effectiveSchedulerName != null) {
+                            stmt.setString(3, effectiveSchedulerName);
+                        }
+                        int rowsAffected = stmt.executeUpdate();
+                        conn.commit();
+                        return rowsAffected > 0;
+                    }
+                } catch (Exception e) {
+                    // Rollback transaction on error
+                    conn.rollback();
+                    throw e;
+                } finally {
+                    // Restore auto-commit mode
+                    conn.setAutoCommit(true);
                 }
-                if (name != null) {
-                    stmt.setString(paramIndex++, name);
-                }
-                if (schedulerName != null) {
-                    stmt.setString(paramIndex++, schedulerName);
-                }
-                
-                int rowsAffected = stmt.executeUpdate();
-                return rowsAffected > 0;
             }
         } catch (Exception e) {
             throw new RuntimeException("Error deleting job: " + e.getMessage(), e);
@@ -607,34 +759,139 @@ public class QuartzDataService {
     }
     
     /**
-     * Delete a trigger
+     * Delete a trigger with cascade deletion
+     * This method deletes all related records in the following order:
+     * 1. Fired triggers related to the trigger
+     * 2. Simple triggers related to the trigger
+     * 3. Cron triggers related to the trigger
+     * 4. Blob triggers related to the trigger
+     * 5. Simprop triggers related to the trigger
+     * 6. The trigger itself
      */
     public boolean deleteTrigger(String group, String name) {
         try {
-            String triggerTableName = getTableName("triggers");
-
-            String sql = "DELETE FROM " + triggerTableName + " " +
-                         "WHERE 1=1 " +
-                         (group != null ? "AND trigger_group = ? " : "") +
-                         (name != null ? "AND trigger_name = ? " : "") +
-                         (schedulerName != null ? "AND SCHED_NAME = ? " : "");
-
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql)) {
+            try (Connection conn = dataSource.getConnection()) {
+                // Start transaction to ensure all or nothing deletion
+                conn.setAutoCommit(false);
                 
-                int paramIndex = 1;
-                if (group != null) {
-                    stmt.setString(paramIndex++, group);
+                try {
+                    // Get the scheduler name if not provided
+                    String effectiveSchedulerName = schedulerName;
+                    if (effectiveSchedulerName == null) {
+                        String triggerTableName = getTableName("triggers");
+                        String schedulerSql = "SELECT SCHED_NAME FROM " + triggerTableName + " " +
+                                            "WHERE trigger_group = ? AND trigger_name = ? LIMIT 1";
+                        
+                        try (PreparedStatement schedulerStmt = conn.prepareStatement(schedulerSql)) {
+                            schedulerStmt.setString(1, group);
+                            schedulerStmt.setString(2, name);
+                            try (ResultSet rs = schedulerStmt.executeQuery()) {
+                                if (rs.next()) {
+                                    effectiveSchedulerName = rs.getString("SCHED_NAME");
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 1. Delete fired triggers related to the trigger
+                    String firedTriggersTableName = getTableName("fired_triggers");
+                    String firedTriggersSql = "DELETE FROM " + firedTriggersTableName + " " +
+                                            "WHERE trigger_group = ? AND trigger_name = ? " +
+                                            (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                    
+                    try (PreparedStatement stmt = conn.prepareStatement(firedTriggersSql)) {
+                        stmt.setString(1, group);
+                        stmt.setString(2, name);
+                        if (effectiveSchedulerName != null) {
+                            stmt.setString(3, effectiveSchedulerName);
+                        }
+                        stmt.executeUpdate();
+                    }
+                    
+                    // 2. Delete simple triggers related to the trigger
+                    String simpleTriggerTableName = getTableName("simple_triggers");
+                    String simpleTriggerSql = "DELETE FROM " + simpleTriggerTableName + " " +
+                                           "WHERE trigger_name = ? AND trigger_group = ? " +
+                                           (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                    
+                    try (PreparedStatement stmt = conn.prepareStatement(simpleTriggerSql)) {
+                        stmt.setString(1, name);
+                        stmt.setString(2, group);
+                        if (effectiveSchedulerName != null) {
+                            stmt.setString(3, effectiveSchedulerName);
+                        }
+                        stmt.executeUpdate();
+                    }
+                    
+                    // 3. Delete cron triggers related to the trigger
+                    String cronTriggerTableName = getTableName("cron_triggers");
+                    String cronTriggerSql = "DELETE FROM " + cronTriggerTableName + " " +
+                                         "WHERE trigger_name = ? AND trigger_group = ? " +
+                                         (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                    
+                    try (PreparedStatement stmt = conn.prepareStatement(cronTriggerSql)) {
+                        stmt.setString(1, name);
+                        stmt.setString(2, group);
+                        if (effectiveSchedulerName != null) {
+                            stmt.setString(3, effectiveSchedulerName);
+                        }
+                        stmt.executeUpdate();
+                    }
+                    
+                    // 4. Delete blob triggers related to the trigger
+                    String blobTriggerTableName = getTableName("blob_triggers");
+                    String blobTriggerSql = "DELETE FROM " + blobTriggerTableName + " " +
+                                         "WHERE trigger_name = ? AND trigger_group = ? " +
+                                         (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                    
+                    try (PreparedStatement stmt = conn.prepareStatement(blobTriggerSql)) {
+                        stmt.setString(1, name);
+                        stmt.setString(2, group);
+                        if (effectiveSchedulerName != null) {
+                            stmt.setString(3, effectiveSchedulerName);
+                        }
+                        stmt.executeUpdate();
+                    }
+                    
+                    // 5. Delete simprop triggers related to the trigger
+                    String simpropTriggerTableName = getTableName("simprop_triggers");
+                    String simpropTriggerSql = "DELETE FROM " + simpropTriggerTableName + " " +
+                                            "WHERE trigger_name = ? AND trigger_group = ? " +
+                                            (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                    
+                    try (PreparedStatement stmt = conn.prepareStatement(simpropTriggerSql)) {
+                        stmt.setString(1, name);
+                        stmt.setString(2, group);
+                        if (effectiveSchedulerName != null) {
+                            stmt.setString(3, effectiveSchedulerName);
+                        }
+                        stmt.executeUpdate();
+                    }
+                    
+                    // 6. Finally delete the trigger itself
+                    String triggerTableName = getTableName("triggers");
+                    String triggerSql = "DELETE FROM " + triggerTableName + " " +
+                                      "WHERE trigger_name = ? AND trigger_group = ? " +
+                                      (effectiveSchedulerName != null ? "AND SCHED_NAME = ? " : "");
+                    
+                    try (PreparedStatement stmt = conn.prepareStatement(triggerSql)) {
+                        stmt.setString(1, name);
+                        stmt.setString(2, group);
+                        if (effectiveSchedulerName != null) {
+                            stmt.setString(3, effectiveSchedulerName);
+                        }
+                        int rowsAffected = stmt.executeUpdate();
+                        conn.commit();
+                        return rowsAffected > 0;
+                    }
+                } catch (Exception e) {
+                    // Rollback transaction on error
+                    conn.rollback();
+                    throw e;
+                } finally {
+                    // Restore auto-commit mode
+                    conn.setAutoCommit(true);
                 }
-                if (name != null) {
-                    stmt.setString(paramIndex++, name);
-                }
-                if (schedulerName != null) {
-                    stmt.setString(paramIndex++, schedulerName);
-                }
-                
-                int rowsAffected = stmt.executeUpdate();
-                return rowsAffected > 0;
             }
         } catch (Exception e) {
             throw new RuntimeException("Error deleting trigger: " + e.getMessage(), e);
@@ -642,38 +899,58 @@ public class QuartzDataService {
     }
     
     /**
-     * Clear all Quartz tables
+     * Clear all Quartz tables in the correct order to avoid constraint violations
+     * Tables are cleared in dependency order (child tables first, then parent tables)
      */
     public void clearTables() {
         try {
+            // Order is important - delete child tables before parent tables
+            // to avoid constraint violations
             String[] tables = {
+                // Child tables first
                 "fired_triggers",
-                "paused_trigger_grps",
-                "scheduler_state",
-                "locks",
                 "simple_triggers",
                 "simprop_triggers",
                 "cron_triggers",
                 "blob_triggers",
+                // Then parent tables
                 "triggers",
-                "job_details",
-                "calendars"
+                "calendars",
+                "paused_trigger_grps",
+                "scheduler_state",
+                "locks",
+                "job_details"
             };
             
             try (Connection conn = dataSource.getConnection()) {
-                for (String table : tables) {
-                    String tableName = getTableName(table);
-                    String sql = "DELETE FROM " + tableName;
-                    if (schedulerName != null) {
-                        sql += " WHERE SCHED_NAME = ?";
+                // Start transaction to ensure consistency
+                conn.setAutoCommit(false);
+                
+                try {
+                    for (String table : tables) {
+                        String tableName = getTableName(table);
+                        String sql = "DELETE FROM " + tableName;
+                        if (schedulerName != null) {
+                            sql += " WHERE SCHED_NAME = ?";
+                        }
+                        
+                        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                            if (schedulerName != null) {
+                                stmt.setString(1, schedulerName);
+                            }
+                            stmt.executeUpdate();
+                        }
                     }
                     
-                    try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                        if (schedulerName != null) {
-                            stmt.setString(1, schedulerName);
-                        }
-                        stmt.executeUpdate();
-                    }
+                    // Commit the transaction
+                    conn.commit();
+                } catch (Exception e) {
+                    // Rollback on error
+                    conn.rollback();
+                    throw e;
+                } finally {
+                    // Restore auto-commit mode
+                    conn.setAutoCommit(true);
                 }
             }
         } catch (Exception e) {
