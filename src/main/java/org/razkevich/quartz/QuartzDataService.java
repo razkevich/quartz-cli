@@ -63,17 +63,17 @@ public class QuartzDataService {
             String jobTableName = getTableName("job_details");
             String triggerTableName = getTableName("triggers");
             
-            String sql = "SELECT j.job_group, j.job_name, j.description, j.job_class_name, " +
+            String sql = "SELECT j.SCHED_NAME, j.job_group, j.job_name, j.description, j.job_class_name, " +
                         "COUNT(t.trigger_name) as trigger_count " +
                         "FROM " + jobTableName + " j " +
                         "LEFT JOIN " + triggerTableName + " t ON " +
-                        "j.job_name = t.job_name AND j.job_group = t.job_group " +
+                        "j.job_name = t.job_name AND j.job_group = t.job_group AND j.SCHED_NAME = t.SCHED_NAME " +
                         "WHERE 1=1 " +
                         (groupFilter != null ? "AND j.job_group LIKE ? " : "") +
                         (nameFilter != null ? "AND j.job_name LIKE ? " : "") +
                         (schedulerName != null ? "AND j.SCHED_NAME = ? " : "") +
-                        "GROUP BY j.job_group, j.job_name, j.description, j.job_class_name " +
-                        "ORDER BY j.job_group, j.job_name";
+                        "GROUP BY j.SCHED_NAME, j.job_group, j.job_name, j.description, j.job_class_name " +
+                        "ORDER BY j.SCHED_NAME, j.job_group, j.job_name";
             
             try (Connection conn = dataSource.getConnection();
                  PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -97,6 +97,7 @@ public class QuartzDataService {
                         job.put("class", rs.getString("job_class_name"));
                         job.put("description", rs.getString("description"));
                         job.put("triggerCount", rs.getInt("trigger_count"));
+                        job.put("schedulerName", rs.getString("SCHED_NAME"));
                         jobs.add(job);
                     }
                 }
@@ -117,8 +118,9 @@ public class QuartzDataService {
         try {
             String triggerTableName = getTableName("triggers");
             
-            String sql = "SELECT t.trigger_name, t.trigger_group, t.job_name, t.job_group, " +
-                         "t.next_fire_time, t.prev_fire_time, t.trigger_type, t.trigger_state " +
+            String sql = "SELECT t.SCHED_NAME, t.trigger_name, t.trigger_group, t.job_name, t.job_group, " +
+                         "t.next_fire_time, t.prev_fire_time, t.trigger_type, t.trigger_state, " +
+                         "t.start_time, t.end_time, t.priority, t.misfire_instr, t.job_data " +
                          "FROM " + triggerTableName + " t " +
                          "WHERE 1=1 " +
                          (groupFilter != null ? "AND t.trigger_group LIKE ? " : "") +
@@ -149,6 +151,7 @@ public class QuartzDataService {
                         trigger.put("jobGroup", rs.getString("job_group"));
                         trigger.put("state", rs.getString("trigger_state"));
                         trigger.put("type", rs.getString("trigger_type"));
+                        trigger.put("schedulerName", rs.getString("SCHED_NAME"));
                         
                         // Format timestamps
                         long nextFireTime = rs.getLong("next_fire_time");
@@ -210,7 +213,9 @@ public class QuartzDataService {
                         job.put("triggerGroup", rs.getString("TRIGGER_GROUP"));
                         job.put("instanceName", rs.getString("INSTANCE_NAME"));
                         job.put("firedTime", formatTimestamp(rs.getLong("FIRED_TIME")));
+                        job.put("firedTimeMs", rs.getLong("FIRED_TIME"));
                         job.put("scheduledTime", formatTimestamp(rs.getLong("SCHED_TIME")));
+                        job.put("scheduledTimeMs", rs.getLong("SCHED_TIME"));
                         job.put("priority", rs.getInt("PRIORITY"));
                         job.put("state", rs.getString("STATE"));
                         job.put("jobName", rs.getString("JOB_NAME"));
@@ -286,6 +291,7 @@ public class QuartzDataService {
                     scheduler.put("schedulerName", rs.getString("SCHED_NAME"));
                     scheduler.put("instanceName", rs.getString("INSTANCE_NAME"));
                     scheduler.put("lastCheckinTime", formatTimestamp(rs.getLong("LAST_CHECKIN_TIME")));
+                    scheduler.put("lastCheckinTimeMs", rs.getLong("LAST_CHECKIN_TIME"));
                     scheduler.put("checkinInterval", rs.getLong("CHECKIN_INTERVAL"));
                     schedulers.add(scheduler);
                 }
@@ -334,6 +340,7 @@ public class QuartzDataService {
                         jobDetails.put("group", rs.getString("job_group"));
                         jobDetails.put("description", rs.getString("description"));
                         jobDetails.put("jobClass", rs.getString("job_class_name"));
+                        jobDetails.put("schedulerName", rs.getString("SCHED_NAME"));
                         jobDetails.put("isDurable", rs.getString("is_durable"));
                         jobDetails.put("isNonConcurrent", rs.getString("is_nonconcurrent"));
                         jobDetails.put("isUpdateData", rs.getString("is_update_data"));
@@ -459,6 +466,7 @@ public class QuartzDataService {
                         triggerDetails.put("jobName", rs.getString("job_name"));
                         triggerDetails.put("jobGroup", rs.getString("job_group"));
                         triggerDetails.put("description", rs.getString("description"));
+                        triggerDetails.put("schedulerName", rs.getString("SCHED_NAME"));
                         triggerDetails.put("state", rs.getString("trigger_state"));
                         triggerDetails.put("type", rs.getString("trigger_type"));
                         triggerDetails.put("priority", rs.getInt("priority"));
@@ -467,29 +475,37 @@ public class QuartzDataService {
                         long nextFireTime = rs.getLong("next_fire_time");
                         if (!rs.wasNull() && nextFireTime > 0) {
                             triggerDetails.put("nextFireTime", formatTimestamp(nextFireTime));
+                            triggerDetails.put("nextFireTimeMs", nextFireTime);
                         } else {
                             triggerDetails.put("nextFireTime", "N/A");
+                            triggerDetails.put("nextFireTimeMs", 0);
                         }
                         
                         long prevFireTime = rs.getLong("prev_fire_time");
                         if (!rs.wasNull() && prevFireTime > 0) {
                             triggerDetails.put("prevFireTime", formatTimestamp(prevFireTime));
+                            triggerDetails.put("prevFireTimeMs", prevFireTime);
                         } else {
                             triggerDetails.put("prevFireTime", "N/A");
+                            triggerDetails.put("prevFireTimeMs", 0);
                         }
                         
                         long startTime = rs.getLong("start_time");
                         if (!rs.wasNull() && startTime > 0) {
                             triggerDetails.put("startTime", formatTimestamp(startTime));
+                            triggerDetails.put("startTimeMs", startTime);
                         } else {
                             triggerDetails.put("startTime", "N/A");
+                            triggerDetails.put("startTimeMs", 0);
                         }
                         
                         long endTime = rs.getLong("end_time");
                         if (!rs.wasNull() && endTime > 0) {
                             triggerDetails.put("endTime", formatTimestamp(endTime));
+                            triggerDetails.put("endTimeMs", endTime);
                         } else {
                             triggerDetails.put("endTime", "N/A");
+                            triggerDetails.put("endTimeMs", 0);
                         }
                         
                         // Get trigger data map

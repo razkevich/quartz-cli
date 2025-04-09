@@ -143,9 +143,9 @@
                                 <thead>
                                     <tr>
                                         <th>Job Identifier</th>
-                                        <th>Class</th>
                                         <th>Description</th>
                                         <th>Triggers</th>
+                                        <th>Scheduler</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -155,12 +155,14 @@
                                             <span class="fw-bold">{{ job.name }}</span>
                                             <br>
                                             <small class="text-muted">{{ job.group }}</small>
+                                            <br>
+                                            <small class="text-monospace text-secondary"><code>{{ job.class }}</code></small>
                                         </td>
-                                        <td>{{ job.class }}</td>
                                         <td>{{ job.description || 'N/A' }}</td>
                                         <td>
                                             <span class="badge bg-primary">{{ job.triggerCount }}</span>
                                         </td>
+                                        <td>{{ job.schedulerName || 'N/A' }}</td>
                                         <td>
                                             <button class="btn btn-sm btn-info me-1" @click="viewJobDetails(job)">
                                                 <i class="bi bi-eye"></i>
@@ -232,6 +234,7 @@
                                         <th>State</th>
                                         <th>Next Fire Time</th>
                                         <th>Previous Fire Time</th>
+                                        <th>Scheduler</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -253,8 +256,9 @@
                                         <td>
                                             <span class="badge" :class="getTriggerStateClass(trigger.state)">{{ trigger.state }}</span>
                                         </td>
-                                        <td>{{ formatRelativeTime(trigger.nextFireTime) }}</td>
-                                        <td>{{ formatRelativeTime(trigger.prevFireTime) }}</td>
+                                        <td>{{ formatRelativeTime(trigger) }}</td>
+                                        <td>{{ formatRelativeTime(trigger) }}</td>
+                                        <td>{{ trigger.schedulerName || 'N/A' }}</td>
                                         <td>
                                             <button class="btn btn-sm btn-info me-1" @click="viewTriggerDetails(trigger)">
                                                 <i class="bi bi-eye"></i>
@@ -265,7 +269,7 @@
                                         </td>
                                     </tr>
                                     <tr v-if="filteredTriggers.length === 0">
-                                        <td colspan="7" class="text-center">No triggers found</td>
+                                        <td colspan="8" class="text-center">No triggers found</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -323,6 +327,7 @@
                                         <th>Fired Time</th>
                                         <th>Scheduled Time</th>
                                         <th>State</th>
+                                        <th>Scheduler</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -338,14 +343,15 @@
                                             <small class="text-muted">{{ job.triggerGroup }}</small>
                                         </td>
                                         <td>{{ job.instanceName }}</td>
-                                        <td>{{ formatRelativeTime(job.firedTime) }}</td>
-                                        <td>{{ formatRelativeTime(job.scheduledTime) }}</td>
+                                        <td>{{ formatRelativeTime(job) }}</td>
+                                        <td>{{ formatRelativeTime(job) }}</td>
                                         <td>
                                             <span class="badge bg-success">{{ job.state }}</span>
                                         </td>
+                                        <td>{{ job.schedulerName || 'N/A' }}</td>
                                     </tr>
                                     <tr v-if="runningJobs.length === 0">
-                                        <td colspan="6" class="text-center">No running jobs found</td>
+                                        <td colspan="7" class="text-center">No running jobs found</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -469,7 +475,7 @@
                                     <tr v-for="scheduler in schedulers" :key="scheduler.schedulerName + '-' + scheduler.instanceName">
                                         <td>{{ scheduler.schedulerName }}</td>
                                         <td>{{ scheduler.instanceName }}</td>
-                                        <td>{{ formatRelativeTime(scheduler.lastCheckinTime) }}</td>
+                                        <td>{{ formatRelativeTime(scheduler) }}</td>
                                         <td>{{ scheduler.checkinInterval }} ms</td>
                                     </tr>
                                     <tr v-if="schedulers.length === 0">
@@ -548,6 +554,10 @@
                                         <th>Job Class:</th>
                                         <td>{{ selectedJobDetails.jobClass }}</td>
                                     </tr>
+                                    <tr>
+                                        <th>Scheduler:</th>
+                                        <td>{{ selectedJobDetails.schedulerName || 'N/A' }}</td>
+                                    </tr>
                                 </table>
                             </div>
                             <div class="col-md-6">
@@ -587,6 +597,7 @@
                                         <th>Type</th>
                                         <th>State</th>
                                         <th>Next Fire Time</th>
+                                        <th>Scheduler</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -648,6 +659,10 @@
                                         <th>Description:</th>
                                         <td>{{ selectedTriggerDetails.description || 'N/A' }}</td>
                                     </tr>
+                                    <tr>
+                                        <th>Scheduler:</th>
+                                        <td>{{ selectedTriggerDetails.schedulerName || 'N/A' }}</td>
+                                    </tr>
                                 </table>
                             </div>
                             <div class="col-md-6">
@@ -692,28 +707,28 @@
                                     <tr>
                                         <th>Start Time:</th>
                                         <td>
-                                            {{ formatRelativeTime(selectedTriggerDetails.startTime) }}
+                                            {{ formatRelativeTime(selectedTriggerDetails) }}
                                             <small class="text-muted d-block">{{ selectedTriggerDetails.startTime }}</small>
                                         </td>
                                     </tr>
                                     <tr>
                                         <th>End Time:</th>
                                         <td>
-                                            {{ formatRelativeTime(selectedTriggerDetails.endTime) }}
+                                            {{ formatRelativeTime(selectedTriggerDetails) }}
                                             <small class="text-muted d-block">{{ selectedTriggerDetails.endTime }}</small>
                                         </td>
                                     </tr>
                                     <tr>
                                         <th>Next Fire Time:</th>
                                         <td>
-                                            {{ formatRelativeTime(selectedTriggerDetails.nextFireTime) }}
+                                            {{ formatRelativeTime(selectedTriggerDetails) }}
                                             <small class="text-muted d-block">{{ selectedTriggerDetails.nextFireTime }}</small>
                                         </td>
                                     </tr>
                                     <tr>
                                         <th>Previous Fire Time:</th>
                                         <td>
-                                            {{ formatRelativeTime(selectedTriggerDetails.prevFireTime) }}
+                                            {{ formatRelativeTime(selectedTriggerDetails) }}
                                             <small class="text-muted d-block">{{ selectedTriggerDetails.prevFireTime }}</small>
                                         </td>
                                     </tr>
@@ -1131,17 +1146,63 @@
                 },
                 formatRelativeTime(timestamp) {
                     if (!timestamp) return 'N/A';
+                    if (timestamp === 'N/A') return 'N/A';
                     
                     // Parse the timestamp
                     let date;
-                    if (typeof timestamp === 'string') {
+                    let type = '';
+                    
+                    if (typeof timestamp === 'object') {
+                        // Determine what type of object we're dealing with
+                        if (timestamp.hasOwnProperty('nextFireTimeMs') && timestamp.nextFireTimeMs > 0) {
+                            date = new Date(timestamp.nextFireTimeMs);
+                            type = 'next';
+                        } else if (timestamp.hasOwnProperty('prevFireTimeMs') && timestamp.prevFireTimeMs > 0) {
+                            date = new Date(timestamp.prevFireTimeMs);
+                            type = 'prev';
+                        } else if (timestamp.hasOwnProperty('startTimeMs') && timestamp.startTimeMs > 0) {
+                            date = new Date(timestamp.startTimeMs);
+                            type = 'start';
+                        } else if (timestamp.hasOwnProperty('endTimeMs') && timestamp.endTimeMs > 0) {
+                            date = new Date(timestamp.endTimeMs);
+                            type = 'end';
+                        } else if (timestamp.hasOwnProperty('firedTimeMs') && timestamp.firedTimeMs > 0) {
+                            date = new Date(timestamp.firedTimeMs);
+                            type = 'fired';
+                        } else if (timestamp.hasOwnProperty('scheduledTimeMs') && timestamp.scheduledTimeMs > 0) {
+                            date = new Date(timestamp.scheduledTimeMs);
+                            type = 'scheduled';
+                        } else if (timestamp.hasOwnProperty('lastCheckinTimeMs') && timestamp.lastCheckinTimeMs > 0) {
+                            date = new Date(timestamp.lastCheckinTimeMs);
+                            type = 'checkin';
+                        } else {
+                            // If we have an object but no valid timestamp field, check for string fields
+                            if (timestamp.hasOwnProperty('nextFireTime') && timestamp.nextFireTime !== 'N/A') {
+                                return timestamp.nextFireTime;
+                            } else if (timestamp.hasOwnProperty('prevFireTime') && timestamp.prevFireTime !== 'N/A') {
+                                return timestamp.prevFireTime;
+                            } else if (timestamp.hasOwnProperty('startTime') && timestamp.startTime !== 'N/A') {
+                                return timestamp.startTime;
+                            } else if (timestamp.hasOwnProperty('endTime') && timestamp.endTime !== 'N/A') {
+                                return timestamp.endTime;
+                            } else if (timestamp.hasOwnProperty('firedTime') && timestamp.firedTime !== 'N/A') {
+                                return timestamp.firedTime;
+                            } else if (timestamp.hasOwnProperty('scheduledTime') && timestamp.scheduledTime !== 'N/A') {
+                                return timestamp.scheduledTime;
+                            } else if (timestamp.hasOwnProperty('lastCheckinTime') && timestamp.lastCheckinTime !== 'N/A') {
+                                return timestamp.lastCheckinTime;
+                            } else {
+                                return 'N/A';
+                            }
+                        }
+                    } else if (typeof timestamp === 'string') {
                         // Try to parse the string timestamp
                         date = new Date(timestamp);
-                    } else if (typeof timestamp === 'number') {
+                    } else if (typeof timestamp === 'number' && timestamp > 0) {
                         // If it's a number (milliseconds), create date from it
                         date = new Date(timestamp);
                     } else {
-                        return 'Invalid date';
+                        return 'N/A';
                     }
                     
                     // Check if date is valid
