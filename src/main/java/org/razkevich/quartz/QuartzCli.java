@@ -433,26 +433,13 @@ public class QuartzCli implements Callable<Integer> {
         }
     }
     
+    /**
+     * Format a timestamp for relative display
+     * @deprecated Use DateTimeUtils.formatRelativeTime instead
+     */
+    @Deprecated
     private String formatRelativeTime(long timestamp) {
-        long now = System.currentTimeMillis();
-        long diff = timestamp - now;
-        long absDiff = Math.abs(diff);
-        
-        if (absDiff < 1000) { // Less than 1 second
-            return diff > 0 ? "now" : "just now";
-        } else if (absDiff < 60 * 1000) { // Less than 1 minute
-            long seconds = absDiff / 1000;
-            return diff > 0 ? seconds + "s" : seconds + "s ago";
-        } else if (absDiff < 60 * 60 * 1000) { // Less than 1 hour
-            long minutes = absDiff / (60 * 1000);
-            return diff > 0 ? minutes + "m" : minutes + "m ago";
-        } else if (absDiff < 24 * 60 * 60 * 1000) { // Less than 1 day
-            long hours = absDiff / (60 * 60 * 1000);
-            return diff > 0 ? hours + "h" : hours + "h ago";
-        } else {
-            long days = absDiff / (24 * 60 * 60 * 1000);
-            return diff > 0 ? days + "d" : days + "d ago";
-        }
+        return DateTimeUtils.formatRelativeTime(timestamp);
     }
     
     private void listRunningJobs() throws Exception {
