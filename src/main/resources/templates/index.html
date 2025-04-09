@@ -142,8 +142,7 @@
                             <table class="table table-striped table-hover">
                                 <thead>
                                     <tr>
-                                        <th>Group</th>
-                                        <th>Name</th>
+                                        <th>Job Identifier</th>
                                         <th>Class</th>
                                         <th>Description</th>
                                         <th>Triggers</th>
@@ -152,8 +151,11 @@
                                 </thead>
                                 <tbody>
                                     <tr v-for="job in filteredJobs" :key="job.group + '-' + job.name">
-                                        <td>{{ job.group }}</td>
-                                        <td>{{ job.name }}</td>
+                                        <td>
+                                            <span class="fw-bold">{{ job.name }}</span>
+                                            <br>
+                                            <small class="text-muted">{{ job.group }}</small>
+                                        </td>
                                         <td>{{ job.class }}</td>
                                         <td>{{ job.description || 'N/A' }}</td>
                                         <td>
@@ -169,10 +171,46 @@
                                         </td>
                                     </tr>
                                     <tr v-if="filteredJobs.length === 0">
-                                        <td colspan="6" class="text-center">No jobs found</td>
+                                        <td colspan="5" class="text-center">No jobs found</td>
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <!-- Pagination for Jobs -->
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <div>
+                                <span class="text-muted">Showing {{ jobs.length }} of {{ pagination.jobs.totalItems }} items</span>
+                            </div>
+                            <nav aria-label="Page navigation" v-if="pagination.jobs.totalPages > 1">
+                                <ul class="pagination">
+                                    <li class="page-item" :class="{ disabled: pagination.jobs.currentPage === 0 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('jobs', 0)">
+                                            <i class="bi bi-chevron-double-left"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.jobs.currentPage === 0 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('jobs', pagination.jobs.currentPage - 1)">
+                                            <i class="bi bi-chevron-left"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" v-for="page in pagination.jobs.totalPages" :key="page" 
+                                        :class="{ active: pagination.jobs.currentPage === page - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('jobs', page - 1)">
+                                            {{ page }}
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.jobs.currentPage === pagination.jobs.totalPages - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('jobs', pagination.jobs.currentPage + 1)">
+                                            <i class="bi bi-chevron-right"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.jobs.currentPage === pagination.jobs.totalPages - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('jobs', pagination.jobs.totalPages - 1)">
+                                            <i class="bi bi-chevron-double-right"></i>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </nav>
                         </div>
                     </div>
 
@@ -188,27 +226,35 @@
                             <table class="table table-striped table-hover">
                                 <thead>
                                     <tr>
-                                        <th>Group</th>
-                                        <th>Name</th>
+                                        <th>Trigger Identifier</th>
                                         <th>Job</th>
                                         <th>Type</th>
                                         <th>State</th>
                                         <th>Next Fire Time</th>
+                                        <th>Previous Fire Time</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr v-for="trigger in filteredTriggers" :key="trigger.group + '-' + trigger.name">
-                                        <td>{{ trigger.group }}</td>
-                                        <td>{{ trigger.name }}</td>
-                                        <td>{{ trigger.jobGroup }}.{{ trigger.jobName }}</td>
+                                        <td>
+                                            <span class="fw-bold">{{ trigger.name }}</span>
+                                            <br>
+                                            <small class="text-muted">{{ trigger.group }}</small>
+                                        </td>
+                                        <td>
+                                            <span class="fw-bold">{{ trigger.jobName }}</span>
+                                            <br>
+                                            <small class="text-muted">{{ trigger.jobGroup }}</small>
+                                        </td>
                                         <td>
                                             <span class="badge" :class="getTriggerTypeClass(trigger.type)">{{ trigger.type }}</span>
                                         </td>
                                         <td>
                                             <span class="badge" :class="getTriggerStateClass(trigger.state)">{{ trigger.state }}</span>
                                         </td>
-                                        <td>{{ trigger.nextFireTime }}</td>
+                                        <td>{{ formatRelativeTime(trigger.nextFireTime) }}</td>
+                                        <td>{{ formatRelativeTime(trigger.prevFireTime) }}</td>
                                         <td>
                                             <button class="btn btn-sm btn-info me-1" @click="viewTriggerDetails(trigger)">
                                                 <i class="bi bi-eye"></i>
@@ -223,6 +269,42 @@
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <!-- Pagination for Triggers -->
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <div>
+                                <span class="text-muted">Showing {{ triggers.length }} of {{ pagination.triggers.totalItems }} items</span>
+                            </div>
+                            <nav aria-label="Page navigation" v-if="pagination.triggers.totalPages > 1">
+                                <ul class="pagination">
+                                    <li class="page-item" :class="{ disabled: pagination.triggers.currentPage === 0 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('triggers', 0)">
+                                            <i class="bi bi-chevron-double-left"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.triggers.currentPage === 0 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('triggers', pagination.triggers.currentPage - 1)">
+                                            <i class="bi bi-chevron-left"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" v-for="page in pagination.triggers.totalPages" :key="page" 
+                                        :class="{ active: pagination.triggers.currentPage === page - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('triggers', page - 1)">
+                                            {{ page }}
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.triggers.currentPage === pagination.triggers.totalPages - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('triggers', pagination.triggers.currentPage + 1)">
+                                            <i class="bi bi-chevron-right"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.triggers.currentPage === pagination.triggers.totalPages - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('triggers', pagination.triggers.totalPages - 1)">
+                                            <i class="bi bi-chevron-double-right"></i>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </nav>
                         </div>
                     </div>
 
@@ -245,11 +327,19 @@
                                 </thead>
                                 <tbody>
                                     <tr v-for="job in runningJobs" :key="job.entryId">
-                                        <td>{{ job.jobGroup }}.{{ job.jobName }}</td>
-                                        <td>{{ job.triggerGroup }}.{{ job.triggerName }}</td>
+                                        <td>
+                                            <span class="fw-bold">{{ job.jobName }}</span>
+                                            <br>
+                                            <small class="text-muted">{{ job.jobGroup }}</small>
+                                        </td>
+                                        <td>
+                                            <span class="fw-bold">{{ job.triggerName }}</span>
+                                            <br>
+                                            <small class="text-muted">{{ job.triggerGroup }}</small>
+                                        </td>
                                         <td>{{ job.instanceName }}</td>
-                                        <td>{{ job.firedTime }}</td>
-                                        <td>{{ job.scheduledTime }}</td>
+                                        <td>{{ formatRelativeTime(job.firedTime) }}</td>
+                                        <td>{{ formatRelativeTime(job.scheduledTime) }}</td>
                                         <td>
                                             <span class="badge bg-success">{{ job.state }}</span>
                                         </td>
@@ -259,6 +349,42 @@
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <!-- Pagination for Running Jobs -->
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <div>
+                                <span class="text-muted">Showing {{ runningJobs.length }} of {{ pagination.runningJobs.totalItems }} items</span>
+                            </div>
+                            <nav aria-label="Page navigation" v-if="pagination.runningJobs.totalPages > 1">
+                                <ul class="pagination">
+                                    <li class="page-item" :class="{ disabled: pagination.runningJobs.currentPage === 0 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('runningJobs', 0)">
+                                            <i class="bi bi-chevron-double-left"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.runningJobs.currentPage === 0 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('runningJobs', pagination.runningJobs.currentPage - 1)">
+                                            <i class="bi bi-chevron-left"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" v-for="page in pagination.runningJobs.totalPages" :key="page" 
+                                        :class="{ active: pagination.runningJobs.currentPage === page - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('runningJobs', page - 1)">
+                                            {{ page }}
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.runningJobs.currentPage === pagination.runningJobs.totalPages - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('runningJobs', pagination.runningJobs.currentPage + 1)">
+                                            <i class="bi bi-chevron-right"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.runningJobs.currentPage === pagination.runningJobs.totalPages - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('runningJobs', pagination.runningJobs.totalPages - 1)">
+                                            <i class="bi bi-chevron-double-right"></i>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </nav>
                         </div>
                     </div>
 
@@ -286,6 +412,42 @@
                                 </tbody>
                             </table>
                         </div>
+                        <!-- Pagination for Paused Groups -->
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <div>
+                                <span class="text-muted">Showing {{ pausedGroups.length }} of {{ pagination.pausedGroups.totalItems }} items</span>
+                            </div>
+                            <nav aria-label="Page navigation" v-if="pagination.pausedGroups.totalPages > 1">
+                                <ul class="pagination">
+                                    <li class="page-item" :class="{ disabled: pagination.pausedGroups.currentPage === 0 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('pausedGroups', 0)">
+                                            <i class="bi bi-chevron-double-left"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.pausedGroups.currentPage === 0 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('pausedGroups', pagination.pausedGroups.currentPage - 1)">
+                                            <i class="bi bi-chevron-left"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" v-for="page in pagination.pausedGroups.totalPages" :key="page" 
+                                        :class="{ active: pagination.pausedGroups.currentPage === page - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('pausedGroups', page - 1)">
+                                            {{ page }}
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.pausedGroups.currentPage === pagination.pausedGroups.totalPages - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('pausedGroups', pagination.pausedGroups.currentPage + 1)">
+                                            <i class="bi bi-chevron-right"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.pausedGroups.currentPage === pagination.pausedGroups.totalPages - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('pausedGroups', pagination.pausedGroups.totalPages - 1)">
+                                            <i class="bi bi-chevron-double-right"></i>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
                     </div>
 
                     <!-- Schedulers View -->
@@ -307,7 +469,7 @@
                                     <tr v-for="scheduler in schedulers" :key="scheduler.schedulerName + '-' + scheduler.instanceName">
                                         <td>{{ scheduler.schedulerName }}</td>
                                         <td>{{ scheduler.instanceName }}</td>
-                                        <td>{{ scheduler.lastCheckinTime }}</td>
+                                        <td>{{ formatRelativeTime(scheduler.lastCheckinTime) }}</td>
                                         <td>{{ scheduler.checkinInterval }} ms</td>
                                     </tr>
                                     <tr v-if="schedulers.length === 0">
@@ -315,6 +477,42 @@
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <!-- Pagination for Schedulers -->
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <div>
+                                <span class="text-muted">Showing {{ schedulers.length }} of {{ pagination.schedulers.totalItems }} items</span>
+                            </div>
+                            <nav aria-label="Page navigation" v-if="pagination.schedulers.totalPages > 1">
+                                <ul class="pagination">
+                                    <li class="page-item" :class="{ disabled: pagination.schedulers.currentPage === 0 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('schedulers', 0)">
+                                            <i class="bi bi-chevron-double-left"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.schedulers.currentPage === 0 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('schedulers', pagination.schedulers.currentPage - 1)">
+                                            <i class="bi bi-chevron-left"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" v-for="page in pagination.schedulers.totalPages" :key="page" 
+                                        :class="{ active: pagination.schedulers.currentPage === page - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('schedulers', page - 1)">
+                                            {{ page }}
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.schedulers.currentPage === pagination.schedulers.totalPages - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('schedulers', pagination.schedulers.currentPage + 1)">
+                                            <i class="bi bi-chevron-right"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" :class="{ disabled: pagination.schedulers.currentPage === pagination.schedulers.totalPages - 1 }">
+                                        <a class="page-link" href="#" @click.prevent="changePage('schedulers', pagination.schedulers.totalPages - 1)">
+                                            <i class="bi bi-chevron-double-right"></i>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </nav>
                         </div>
                     </div>
                 </div>
@@ -493,19 +691,31 @@
                                 <table class="table table-sm">
                                     <tr>
                                         <th>Start Time:</th>
-                                        <td>{{ selectedTriggerDetails.startTime }}</td>
+                                        <td>
+                                            {{ formatRelativeTime(selectedTriggerDetails.startTime) }}
+                                            <small class="text-muted d-block">{{ selectedTriggerDetails.startTime }}</small>
+                                        </td>
                                     </tr>
                                     <tr>
                                         <th>End Time:</th>
-                                        <td>{{ selectedTriggerDetails.endTime }}</td>
+                                        <td>
+                                            {{ formatRelativeTime(selectedTriggerDetails.endTime) }}
+                                            <small class="text-muted d-block">{{ selectedTriggerDetails.endTime }}</small>
+                                        </td>
                                     </tr>
                                     <tr>
                                         <th>Next Fire Time:</th>
-                                        <td>{{ selectedTriggerDetails.nextFireTime }}</td>
+                                        <td>
+                                            {{ formatRelativeTime(selectedTriggerDetails.nextFireTime) }}
+                                            <small class="text-muted d-block">{{ selectedTriggerDetails.nextFireTime }}</small>
+                                        </td>
                                     </tr>
                                     <tr>
                                         <th>Previous Fire Time:</th>
-                                        <td>{{ selectedTriggerDetails.prevFireTime }}</td>
+                                        <td>
+                                            {{ formatRelativeTime(selectedTriggerDetails.prevFireTime) }}
+                                            <small class="text-muted d-block">{{ selectedTriggerDetails.prevFireTime }}</small>
+                                        </td>
                                     </tr>
                                 </table>
                             </div>
@@ -671,7 +881,39 @@
                         schema: '',
                         tablePrefix: ''
                     },
-                    modals: {}
+                    modals: {},
+                    pagination: {
+                        jobs: {
+                            currentPage: 0,
+                            totalPages: 0,
+                            totalItems: 0,
+                            pageSize: 10
+                        },
+                        triggers: {
+                            currentPage: 0,
+                            totalPages: 0,
+                            totalItems: 0,
+                            pageSize: 10
+                        },
+                        runningJobs: {
+                            currentPage: 0,
+                            totalPages: 0,
+                            totalItems: 0,
+                            pageSize: 10
+                        },
+                        pausedGroups: {
+                            currentPage: 0,
+                            totalPages: 0,
+                            totalItems: 0,
+                            pageSize: 10
+                        },
+                        schedulers: {
+                            currentPage: 0,
+                            totalPages: 0,
+                            totalItems: 0,
+                            pageSize: 10
+                        }
+                    }
                 };
             },
             computed: {
@@ -738,24 +980,54 @@
                     this.connectionInfo = response.data;
                 },
                 async loadJobs() {
-                    const response = await axios.get('/api/quartz/jobs');
-                    this.jobs = response.data;
+                    const page = this.pagination.jobs.currentPage;
+                    const size = this.pagination.jobs.pageSize;
+                    const response = await axios.get(`/api/quartz/jobs?page=${page}&size=${size}`);
+                    this.jobs = response.data.content;
+                    this.pagination.jobs.totalPages = response.data.totalPages;
+                    this.pagination.jobs.totalItems = response.data.totalItems;
+                    this.pagination.jobs.currentPage = response.data.currentPage;
+                },
+                
+                changePage(view, page) {
+                    this.pagination[view].currentPage = page;
+                    this.refreshData();
                 },
                 async loadTriggers() {
-                    const response = await axios.get('/api/quartz/triggers');
-                    this.triggers = response.data;
+                    const page = this.pagination.triggers.currentPage;
+                    const size = this.pagination.triggers.pageSize;
+                    const response = await axios.get(`/api/quartz/triggers?page=${page}&size=${size}`);
+                    this.triggers = response.data.content;
+                    this.pagination.triggers.totalPages = response.data.totalPages;
+                    this.pagination.triggers.totalItems = response.data.totalItems;
+                    this.pagination.triggers.currentPage = response.data.currentPage;
                 },
                 async loadRunningJobs() {
-                    const response = await axios.get('/api/quartz/running-jobs');
-                    this.runningJobs = response.data;
+                    const page = this.pagination.runningJobs.currentPage;
+                    const size = this.pagination.runningJobs.pageSize;
+                    const response = await axios.get(`/api/quartz/running-jobs?page=${page}&size=${size}`);
+                    this.runningJobs = response.data.content;
+                    this.pagination.runningJobs.totalPages = response.data.totalPages;
+                    this.pagination.runningJobs.totalItems = response.data.totalItems;
+                    this.pagination.runningJobs.currentPage = response.data.currentPage;
                 },
                 async loadPausedGroups() {
-                    const response = await axios.get('/api/quartz/paused-groups');
-                    this.pausedGroups = response.data;
+                    const page = this.pagination.pausedGroups.currentPage;
+                    const size = this.pagination.pausedGroups.pageSize;
+                    const response = await axios.get(`/api/quartz/paused-groups?page=${page}&size=${size}`);
+                    this.pausedGroups = response.data.content;
+                    this.pagination.pausedGroups.totalPages = response.data.totalPages;
+                    this.pagination.pausedGroups.totalItems = response.data.totalItems;
+                    this.pagination.pausedGroups.currentPage = response.data.currentPage;
                 },
                 async loadSchedulers() {
-                    const response = await axios.get('/api/quartz/schedulers');
-                    this.schedulers = response.data;
+                    const page = this.pagination.schedulers.currentPage;
+                    const size = this.pagination.schedulers.pageSize;
+                    const response = await axios.get(`/api/quartz/schedulers?page=${page}&size=${size}`);
+                    this.schedulers = response.data.content;
+                    this.pagination.schedulers.totalPages = response.data.totalPages;
+                    this.pagination.schedulers.totalItems = response.data.totalItems;
+                    this.pagination.schedulers.currentPage = response.data.currentPage;
                 },
                 async viewJobDetails(job) {
                     this.loading = true;
@@ -856,6 +1128,58 @@
                         case 'BLOCKED': return 'bg-dark';
                         default: return 'bg-secondary';
                     }
+                },
+                formatRelativeTime(timestamp) {
+                    if (!timestamp) return 'N/A';
+                    
+                    // Parse the timestamp
+                    let date;
+                    if (typeof timestamp === 'string') {
+                        // Try to parse the string timestamp
+                        date = new Date(timestamp);
+                    } else if (typeof timestamp === 'number') {
+                        // If it's a number (milliseconds), create date from it
+                        date = new Date(timestamp);
+                    } else {
+                        return 'Invalid date';
+                    }
+                    
+                    // Check if date is valid
+                    if (isNaN(date.getTime())) {
+                        return 'Invalid date';
+                    }
+                    
+                    const now = new Date();
+                    const diffMs = date.getTime() - now.getTime();
+                    const diffSecs = Math.round(diffMs / 1000);
+                    const diffMins = Math.round(diffSecs / 60);
+                    const diffHours = Math.round(diffMins / 60);
+                    const diffDays = Math.round(diffHours / 24);
+                    
+                    // Future time
+                    if (diffMs > 0) {
+                        if (diffSecs < 60) return `in ${diffSecs} second${diffSecs !== 1 ? 's' : ''}`;
+                        if (diffMins < 60) return `in ${diffMins} minute${diffMins !== 1 ? 's' : ''}`;
+                        if (diffHours < 24) return `in ${diffHours} hour${diffHours !== 1 ? 's' : ''}`;
+                        if (diffDays < 30) return `in ${diffDays} day${diffDays !== 1 ? 's' : ''}`;
+                        
+                        // For longer future times, show the actual date
+                        return date.toLocaleString();
+                    }
+                    
+                    // Past time
+                    const absDiffSecs = Math.abs(diffSecs);
+                    const absDiffMins = Math.abs(diffMins);
+                    const absDiffHours = Math.abs(diffHours);
+                    const absDiffDays = Math.abs(diffDays);
+                    
+                    if (absDiffSecs < 60) return `${absDiffSecs} second${absDiffSecs !== 1 ? 's' : ''} ago`;
+                    if (absDiffMins < 60) return `${absDiffMins} minute${absDiffMins !== 1 ? 's' : ''} ago`;
+                    if (absDiffHours < 24) return `${absDiffHours} hour${absDiffHours !== 1 ? 's' : ''} ago`;
+                    if (absDiffDays < 30) return `${absDiffDays} day${absDiffDays !== 1 ? 's' : ''} ago`;
+                    
+                    // For longer past times, show the actual date
+                    return date.toLocaleString();
                 }
             },
             mounted() {

@@ -24,32 +24,42 @@ public class QuartzController {
     }
 
     @GetMapping("/jobs")
-    public ResponseEntity<List<Map<String, Object>>> listJobs(
+    public ResponseEntity<Map<String, Object>> listJobs(
             @RequestParam(required = false) String group,
-            @RequestParam(required = false) String name) {
-        return ResponseEntity.ok(quartzService.listJobs(group, name));
+            @RequestParam(required = false) String name,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(quartzService.listJobsPaginated(group, name, page, size));
     }
 
     @GetMapping("/triggers")
-    public ResponseEntity<List<Map<String, Object>>> listTriggers(
+    public ResponseEntity<Map<String, Object>> listTriggers(
             @RequestParam(required = false) String group,
-            @RequestParam(required = false) String name) {
-        return ResponseEntity.ok(quartzService.listTriggers(group, name));
+            @RequestParam(required = false) String name,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(quartzService.listTriggersPaginated(group, name, page, size));
     }
 
     @GetMapping("/running-jobs")
-    public ResponseEntity<List<Map<String, Object>>> listRunningJobs() {
-        return ResponseEntity.ok(quartzService.listRunningJobs());
+    public ResponseEntity<Map<String, Object>> listRunningJobs(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(quartzService.listRunningJobsPaginated(page, size));
     }
 
     @GetMapping("/paused-groups")
-    public ResponseEntity<List<Map<String, Object>>> listPausedTriggerGroups() {
-        return ResponseEntity.ok(quartzService.listPausedTriggerGroups());
+    public ResponseEntity<Map<String, Object>> listPausedTriggerGroups(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(quartzService.listPausedTriggerGroupsPaginated(page, size));
     }
 
     @GetMapping("/schedulers")
-    public ResponseEntity<List<Map<String, Object>>> listSchedulers() {
-        return ResponseEntity.ok(quartzService.listSchedulers());
+    public ResponseEntity<Map<String, Object>> listSchedulers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(quartzService.listSchedulersPaginated(page, size));
     }
 
     @GetMapping("/jobs/{group}/{name}")
