@@ -186,8 +186,12 @@ public class QuartzDataService {
     
     /**
      * Get a list of all running jobs
+     * 
+     * @param groupFilter Optional filter for job group (can be null)
+     * @param nameFilter Optional filter for job name (can be null)
+     * @return List of running jobs matching the filters
      */
-    public List<Map<String, Object>> listRunningJobs() {
+    public List<Map<String, Object>> listRunningJobs(String groupFilter, String nameFilter) {
         List<Map<String, Object>> runningJobs = new ArrayList<>();
         
         try {
@@ -195,14 +199,23 @@ public class QuartzDataService {
             
             String sql = "SELECT * FROM " + firedTriggersTableName + " " +
                          "WHERE 1=1 " +
+                         (groupFilter != null ? "AND JOB_GROUP LIKE ? " : "") +
+                         (nameFilter != null ? "AND JOB_NAME LIKE ? " : "") +
                          (schedulerName != null ? "AND SCHED_NAME = ? " : "") +
                          "ORDER BY FIRED_TIME DESC";
             
             try (Connection conn = dataSource.getConnection();
                  PreparedStatement stmt = conn.prepareStatement(sql)) {
                 
+                int paramIndex = 1;
+                if (groupFilter != null) {
+                    stmt.setString(paramIndex++, "%" + groupFilter + "%");
+                }
+                if (nameFilter != null) {
+                    stmt.setString(paramIndex++, "%" + nameFilter + "%");
+                }
                 if (schedulerName != null) {
-                    stmt.setString(1, schedulerName);
+                    stmt.setString(paramIndex++, schedulerName);
                 }
                 
                 try (ResultSet rs = stmt.executeQuery()) {
@@ -235,9 +248,20 @@ public class QuartzDataService {
     }
     
     /**
-     * Get a list of all paused trigger groups
+     * Get a list of all running jobs (no filters)
+     * @deprecated Use listRunningJobs(String groupFilter, String nameFilter) instead
      */
-    public List<Map<String, Object>> listPausedTriggerGroups() {
+    public List<Map<String, Object>> listRunningJobs() {
+        return listRunningJobs(null, null);
+    }
+    
+    /**
+     * Get a list of all paused trigger groups
+     * 
+     * @param groupFilter Optional filter for trigger group (can be null)
+     * @return List of paused trigger groups matching the filter
+     */
+    public List<Map<String, Object>> listPausedTriggerGroups(String groupFilter) {
         List<Map<String, Object>> pausedGroups = new ArrayList<>();
         
         try {
@@ -245,14 +269,19 @@ public class QuartzDataService {
             
             String sql = "SELECT * FROM " + pausedTriggerGrpsTableName + " " +
                          "WHERE 1=1 " +
+                         (groupFilter != null ? "AND TRIGGER_GROUP LIKE ? " : "") +
                          (schedulerName != null ? "AND SCHED_NAME = ? " : "") +
                          "ORDER BY TRIGGER_GROUP";
             
             try (Connection conn = dataSource.getConnection();
                  PreparedStatement stmt = conn.prepareStatement(sql)) {
                 
+                int paramIndex = 1;
+                if (groupFilter != null) {
+                    stmt.setString(paramIndex++, "%" + groupFilter + "%");
+                }
                 if (schedulerName != null) {
-                    stmt.setString(1, schedulerName);
+                    stmt.setString(paramIndex++, schedulerName);
                 }
                 
                 try (ResultSet rs = stmt.executeQuery()) {
@@ -269,6 +298,14 @@ public class QuartzDataService {
         }
         
         return pausedGroups;
+    }
+    
+    /**
+     * Get a list of all paused trigger groups (no filter)
+     * @deprecated Use listPausedTriggerGroups(String groupFilter) instead
+     */
+    public List<Map<String, Object>> listPausedTriggerGroups() {
+        return listPausedTriggerGroups(null);
     }
     
     /**

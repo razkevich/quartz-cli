@@ -204,7 +204,8 @@
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h2>Jobs</h2>
                             <div class="d-flex">
-                                <input type="text" class="form-control me-2" v-model="jobsFilter" placeholder="Filter by name or group...">
+                                <input type="text" class="form-control me-2" v-model="jobsNameFilter" placeholder="Filter by name..." @input="debounceFilter('jobs')">
+                                <input type="text" class="form-control me-2" v-model="jobsGroupFilter" placeholder="Filter by group..." @input="debounceFilter('jobs')">
                             </div>
                         </div>
                         <div class="table-container">
@@ -290,7 +291,8 @@
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h2>Triggers</h2>
                             <div class="d-flex">
-                                <input type="text" class="form-control me-2" v-model="triggersFilter" placeholder="Filter by name or group...">
+                                <input type="text" class="form-control me-2" v-model="triggersNameFilter" placeholder="Filter by name..." @input="debounceFilter('triggers')">
+                                <input type="text" class="form-control me-2" v-model="triggersGroupFilter" placeholder="Filter by group..." @input="debounceFilter('triggers')">
                             </div>
                         </div>
                         <div class="table-container">
@@ -385,6 +387,10 @@
                     <div v-if="activeView === 'running'">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h2>Running Jobs</h2>
+                            <div class="d-flex">
+                                <input type="text" class="form-control me-2" v-model="runningJobsNameFilter" placeholder="Filter by name..." @input="debounceFilter('runningJobs')">
+                                <input type="text" class="form-control me-2" v-model="runningJobsGroupFilter" placeholder="Filter by group..." @input="debounceFilter('runningJobs')">
+                            </div>
                         </div>
                         <div class="table-container">
                             <table class="table table-striped table-hover">
@@ -467,6 +473,9 @@
                     <div v-if="activeView === 'paused'">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h2>Paused Trigger Groups</h2>
+                            <div class="d-flex">
+                                <input type="text" class="form-control me-2" v-model="pausedGroupsFilter" placeholder="Filter by group..." @input="debounceFilter('pausedGroups')">
+                            </div>
                         </div>
                         <div class="table-container">
                             <table class="table table-striped table-hover">
@@ -960,6 +969,14 @@
                     triggerToDelete: null,
                     jobsFilter: '',
                     triggersFilter: '',
+                    jobsNameFilter: '',
+                    jobsGroupFilter: '',
+                    triggersNameFilter: '',
+                    triggersGroupFilter: '',
+                    runningJobsNameFilter: '',
+                    runningJobsGroupFilter: '',
+                    pausedGroupsFilter: '',
+                    filterTimeout: null,
                     connectionInfo: {
                         url: '',
                         driver: '',
@@ -1003,23 +1020,12 @@
             },
             computed: {
                 filteredJobs() {
-                    if (!this.jobsFilter) return this.jobs;
-                    const filter = this.jobsFilter.toLowerCase();
-                    return this.jobs.filter(job => 
-                        job.name.toLowerCase().includes(filter) || 
-                        job.group.toLowerCase().includes(filter) ||
-                        (job.description && job.description.toLowerCase().includes(filter))
-                    );
+                    // No client-side filtering needed as we're using server-side filtering
+                    return this.jobs;
                 },
                 filteredTriggers() {
-                    if (!this.triggersFilter) return this.triggers;
-                    const filter = this.triggersFilter.toLowerCase();
-                    return this.triggers.filter(trigger => 
-                        trigger.name.toLowerCase().includes(filter) || 
-                        trigger.group.toLowerCase().includes(filter) ||
-                        trigger.jobName.toLowerCase().includes(filter) ||
-                        trigger.jobGroup.toLowerCase().includes(filter)
-                    );
+                    // No client-side filtering needed as we're using server-side filtering
+                    return this.triggers;
                 }
             },
             methods: {
@@ -1073,7 +1079,9 @@
                 async loadJobs() {
                     const page = this.pagination.jobs.currentPage;
                     const size = this.pagination.jobs.pageSize;
-                    const response = await axios.get(`/api/quartz/jobs?page=${page}&size=${size}`);
+                    const nameFilter = this.jobsNameFilter ? `&name=${encodeURIComponent(this.jobsNameFilter)}` : '';
+                    const groupFilter = this.jobsGroupFilter ? `&group=${encodeURIComponent(this.jobsGroupFilter)}` : '';
+                    const response = await axios.get(`/api/quartz/jobs?page=${page}&size=${size}${nameFilter}${groupFilter}`);
                     this.jobs = response.data.content;
                     this.pagination.jobs.totalPages = response.data.totalPages;
                     this.pagination.jobs.totalItems = response.data.totalItems;
@@ -1084,10 +1092,25 @@
                     this.pagination[view].currentPage = page;
                     this.refreshData();
                 },
+                debounceFilter(view) {
+                    // Clear any existing timeout
+                    if (this.filterTimeout) {
+                        clearTimeout(this.filterTimeout);
+                    }
+                    
+                    // Set a new timeout to delay the API call
+                    this.filterTimeout = setTimeout(() => {
+                        // Reset to first page when filtering
+                        this.pagination[view].currentPage = 0;
+                        this.refreshData();
+                    }, 300); // 300ms delay
+                },
                 async loadTriggers() {
                     const page = this.pagination.triggers.currentPage;
                     const size = this.pagination.triggers.pageSize;
-                    const response = await axios.get(`/api/quartz/triggers?page=${page}&size=${size}`);
+                    const nameFilter = this.triggersNameFilter ? `&name=${encodeURIComponent(this.triggersNameFilter)}` : '';
+                    const groupFilter = this.triggersGroupFilter ? `&group=${encodeURIComponent(this.triggersGroupFilter)}` : '';
+                    const response = await axios.get(`/api/quartz/triggers?page=${page}&size=${size}${nameFilter}${groupFilter}`);
                     this.triggers = response.data.content;
                     this.pagination.triggers.totalPages = response.data.totalPages;
                     this.pagination.triggers.totalItems = response.data.totalItems;
@@ -1096,7 +1119,9 @@
                 async loadRunningJobs() {
                     const page = this.pagination.runningJobs.currentPage;
                     const size = this.pagination.runningJobs.pageSize;
-                    const response = await axios.get(`/api/quartz/running-jobs?page=${page}&size=${size}`);
+                    const nameFilter = this.runningJobsNameFilter ? `&name=${encodeURIComponent(this.runningJobsNameFilter)}` : '';
+                    const groupFilter = this.runningJobsGroupFilter ? `&group=${encodeURIComponent(this.runningJobsGroupFilter)}` : '';
+                    const response = await axios.get(`/api/quartz/running-jobs?page=${page}&size=${size}${nameFilter}${groupFilter}`);
                     this.runningJobs = response.data.content;
                     this.pagination.runningJobs.totalPages = response.data.totalPages;
                     this.pagination.runningJobs.totalItems = response.data.totalItems;
@@ -1105,7 +1130,8 @@
                 async loadPausedGroups() {
                     const page = this.pagination.pausedGroups.currentPage;
                     const size = this.pagination.pausedGroups.pageSize;
-                    const response = await axios.get(`/api/quartz/paused-groups?page=${page}&size=${size}`);
+                    const groupFilter = this.pausedGroupsFilter ? `&group=${encodeURIComponent(this.pausedGroupsFilter)}` : '';
+                    const response = await axios.get(`/api/quartz/paused-groups?page=${page}&size=${size}${groupFilter}`);
                     this.pausedGroups = response.data.content;
                     this.pagination.pausedGroups.totalPages = response.data.totalPages;
                     this.pagination.pausedGroups.totalItems = response.data.totalItems;
