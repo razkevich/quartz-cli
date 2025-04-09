@@ -3,6 +3,7 @@ package org.razkevich.quartz;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.sql.ResultSet;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -576,13 +577,13 @@ public class QuartzDataService {
     public boolean deleteJob(String group, String name) {
         try {
             String jobTableName = getTableName("job_details");
-            
+
             String sql = "DELETE FROM " + jobTableName + " " +
                          "WHERE 1=1 " +
                          (group != null ? "AND job_group = ? " : "") +
                          (name != null ? "AND job_name = ? " : "") +
                          (schedulerName != null ? "AND SCHED_NAME = ? " : "");
-            
+
             try (Connection conn = dataSource.getConnection();
                  PreparedStatement stmt = conn.prepareStatement(sql)) {
                 
@@ -611,13 +612,13 @@ public class QuartzDataService {
     public boolean deleteTrigger(String group, String name) {
         try {
             String triggerTableName = getTableName("triggers");
-            
+
             String sql = "DELETE FROM " + triggerTableName + " " +
                          "WHERE 1=1 " +
                          (group != null ? "AND trigger_group = ? " : "") +
                          (name != null ? "AND trigger_name = ? " : "") +
                          (schedulerName != null ? "AND SCHED_NAME = ? " : "");
-            
+
             try (Connection conn = dataSource.getConnection();
                  PreparedStatement stmt = conn.prepareStatement(sql)) {
                 
